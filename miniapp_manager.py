@@ -13,7 +13,8 @@ DAYS = ['شنبه','یکشنبه','دوشنبه','سه‌شنبه','چهارشن
 def default_content():
     cfg=json.loads((ROOT/'config.json').read_text())
     blank=lambda description:dict(description=description,singlePrice='',packagePrice='',rules='',sessions=[])
-    return dict(name=cfg['name'],greeting='سلام، به آلیس خوش آمدی.',address='تهران، تهرانپارس، خیابان شهید ملکی، نبش خیابان ۱۲۰، پلاک ۶',phone='',gym=blank('اطلاعات باشگاه بدنسازی، برنامه فعالیت و تعرفه‌ها.'),pool=blank('اطلاعات استخر و سونا، برنامه سانس‌ها و تعرفه‌ها.'),notices=[])
+    services=json.loads((ROOT/'schedule.json').read_text(encoding='utf-8'))
+    return dict(name=cfg['name'],greeting='سلام، به آلیس خوش آمدی.',address='تهران، تهرانپارس، خیابان شهید ملکی، نبش خیابان ۱۲۰، پلاک ۶',phone='',gym=services['gym'],pool=services['pool'],notices=[])
 
 def read_content():
     return json.loads(CONTENT_FILE.read_text()) if CONTENT_FILE.exists() else default_content()
