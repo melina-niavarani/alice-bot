@@ -1,0 +1,53 @@
+CREATE TABLE IF NOT EXISTS members (
+  platform TEXT NOT NULL,
+  chat INTEGER NOT NULL,
+  name TEXT NOT NULL DEFAULT '',
+  subscribed INTEGER NOT NULL DEFAULT 1,
+  news_opt_out INTEGER NOT NULL DEFAULT 0,
+  interest TEXT NOT NULL DEFAULT '',
+  created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (platform, chat)
+);
+CREATE TABLE IF NOT EXISTS destinations (
+  platform TEXT NOT NULL,
+  chat INTEGER NOT NULL,
+  title TEXT NOT NULL DEFAULT '',
+  kind TEXT NOT NULL DEFAULT 'group',
+  active INTEGER NOT NULL DEFAULT 1,
+  PRIMARY KEY (platform, chat)
+);
+CREATE TABLE IF NOT EXISTS drafts (
+  platform TEXT NOT NULL,
+  owner INTEGER NOT NULL,
+  stage TEXT NOT NULL,
+  payload TEXT NOT NULL DEFAULT '{}',
+  targets TEXT NOT NULL DEFAULT '[]',
+  expires INTEGER NOT NULL,
+  PRIMARY KEY (platform, owner)
+);
+CREATE TABLE IF NOT EXISTS campaigns (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  source_platform TEXT NOT NULL,
+  owner INTEGER NOT NULL,
+  created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE TABLE IF NOT EXISTS outbox (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  platform TEXT NOT NULL,
+  chat INTEGER NOT NULL,
+  method TEXT NOT NULL DEFAULT 'sendMessage',
+  payload TEXT NOT NULL,
+  campaign INTEGER,
+  destination INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending',
+  due INTEGER NOT NULL DEFAULT 0,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS outbox_pending ON outbox (status, due, id);
+CREATE TABLE IF NOT EXISTS processed_updates (
+  platform TEXT NOT NULL,
+  update_id INTEGER NOT NULL,
+  created TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (platform, update_id)
+);

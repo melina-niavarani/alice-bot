@@ -1,0 +1,20 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alice-bot",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-24",
+  "triggers": { "crons": ["* * * * *"] },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "alice-bot-db",
+      "database_id": "2daebf8c-59aa-48ca-926f-b30bff57ca1b",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "MINIAPP_URL": "https://alice-miniapp.lvl3lin4.workers.dev",
+    "TELEGRAM_OWNER_ID": "92655562",
+    "BALE_OWNER_ID": "1984558572"
+  }
+}

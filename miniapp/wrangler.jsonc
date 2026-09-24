@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alice-miniapp",
+  "main": "vinext/server/fetch-handler",
+  "compatibility_date": "2026-09-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "alice-miniapp-db",
+      "database_id": "82174993-a40e-4133-a573-77af89cbbb47",
+      "migrations_dir": "drizzle"
+    }
+  ]
+}
