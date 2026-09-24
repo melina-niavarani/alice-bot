@@ -360,6 +360,18 @@ def connect(store, platform, api, stop, health):
                 return
             store.config.setdefault("bot_ids", {})[platform] = identity.get("id")
             store.config.setdefault("bot_usernames", {})[platform] = identity.get("username", "")
+            if platform == "telegram":
+                try:
+                    description = store.config.get("telegram_description")
+                    short_description = store.config.get("telegram_short_description")
+                    if description:
+                        api.call("setMyDescription", description=description)
+                    if short_description:
+                        api.call("setMyShortDescription", short_description=short_description)
+                    if description or short_description:
+                        logging.info("telegram profile descriptions configured")
+                except APIError as exc:
+                    logging.warning("telegram profile description update failed (code %s)", exc.code)
             if platform == "telegram" and os.environ.get("MINIAPP_URL", "").startswith("https://"):
                 api.call("setChatMenuButton", menu_button={"type": "web_app", "text": "ورود به آلیس", "web_app": {"url": os.environ["MINIAPP_URL"]}})
             health[platform] = "متصل"
