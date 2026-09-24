@@ -59,6 +59,10 @@ def handle(store,db,platform,msg):
     text=msg.get('text','').strip(); command=text.split(' ',1)[0].split('@')[0]
     chat=msg.get('chat',{}); ident=chat.get('id'); owner=msg.get('from',{}).get('id')==OWNER and not msg.get('sender_chat')
     def say(body,keyboard=ADMIN):store.queue(db,platform,ident,body,keyboard)
+    def target_choices():
+        return [('اعضای بات','members')]+[('گروه '+str(r['chat'])+' · '+r['title'][:35],str(r['chat'])) for r in execute('SELECT * FROM destinations WHERE active=1')]
+    def clear_previews():
+        execute("DELETE FROM outbox WHERE platform=? AND chat=? AND campaign IS NULL AND body=''",(platform,ident))
     if chat.get('type')!='private':
         if owner and chat.get('type') in ('group','supergroup') and command in ('/connect','/disconnect'):
             execute('INSERT INTO destinations(chat,title,active) VALUES (?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active',(ident,chat.get('title','گروه آلیس'),int(command=='/connect')))
@@ -88,7 +92,7 @@ def handle(store,db,platform,msg):
             draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone()
         else:return False
     if text in ('لغو ارسال','بازگشت','/cancel','/start','/menu') or draft['expires']<time.time():
-        execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,))
+        execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,));clear_previews()
         if text in ('/start','/menu','بازگشت'):return False
         say('پیش‌نویس ارسال لغو شد.');return True
     if draft['stage']=='content':
@@ -112,27 +116,32 @@ def handle(store,db,platform,msg):
             data={k:v for k,v in payload.items() if k!='method'}
             markup={}
             execute('INSERT INTO outbox(platform,chat,body,markup,campaign,method,payload,destination) VALUES (?,?,?,?,?,?,?,?)',(platform,target,data.get('text',data.get('caption','')),json.dumps(markup),campaign,payload['method'],json.dumps(data),is_group))
-        execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,))
+        execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,));clear_previews()
         say('ارسال #%s برای %s مقصد در صف قرار گرفت. «گزارش ارسال» نتیجه را نشان می‌دهد؛ تحویل پیام‌رسان به معنای خوانده‌شدن نیست.'%(campaign,len(recipients)));return True
     else:
-        targets=json.loads(draft['targets'])
-        choices={'اعضای بات':'members'}
-        choices.update({'گروه '+str(r['chat'])+' · '+r['title'][:35]:str(r['chat']) for r in execute('SELECT * FROM destinations WHERE active=1')})
+        targets=json.loads(draft['targets']);choices=target_choices();by_name=dict(choices)
         key=text.removeprefix('✅ ') if hasattr(text,'removeprefix') else (text[2:] if text.startswith('✅ ') else text)
         if key == 'همه اعضا و گروه‌ها':
-            targets=list(choices.values())
+            targets=[value for name,value in choices]
             execute('UPDATE broadcast_drafts SET targets=? WHERE owner=?',(json.dumps(targets),OWNER))
-        elif key in choices:
-            target=choices[key];targets.remove(target) if target in targets else targets.append(target)
+        elif key in by_name:
+            target=by_name[key];targets.remove(target) if target in targets else targets.append(target)
             execute('UPDATE broadcast_drafts SET targets=? WHERE owner=?',(json.dumps(targets),OWNER))
-        elif text=='پیش‌نمایش ارسال':
-            if not targets:say('حداقل یک مقصد انتخاب کن.',[[x] for x in choices]+[['لغو ارسال']]);return True
+        if text=='پیش‌نمایش ارسال' or key=='همه اعضا و گروه‌ها':
+            if not targets:say('حداقل یک مقصد انتخاب کن.',[[name] for name,_ in choices]+[['لغو ارسال']]);return True
             payload=json.loads(draft['payload']);nonce=secrets.token_hex(3)
             execute("UPDATE broadcast_drafts SET stage='confirm',nonce=? WHERE owner=?",(nonce,OWNER))
+            clear_previews()
             execute('INSERT INTO outbox(platform,chat,body,markup,method,payload) VALUES (?,?,?,?,?,?)',(platform,ident,'','{}',payload['method'],json.dumps({k:v for k,v in payload.items() if k!='method'})))
             count=execute("SELECT COUNT(*) FROM members WHERE platform=? AND subscribed=1", (platform,)).fetchone()[0]
-            names=[name for name,value in choices.items() if value in targets]
+            names=[name for name,value in choices if value in targets]
             say('پیش‌نمایش بالا فقط برای توست.\nمقصدها: '+ '، '.join(names)+('\nاعضای فعال خبرها: '+str(count) if 'members' in targets else '')+'\nتأیید، ارسال واقعی را شروع می‌کند.',[['تأیید ارسال '+nonce],['لغو ارسال']]);return True
-    draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone();targets=json.loads(draft['targets'])
-    choices=[('اعضای بات','members')]+[('گروه '+str(r['chat'])+' · '+r['title'][:35],str(r['chat'])) for r in execute('SELECT * FROM destinations WHERE active=1')]
-    say('این پیام کجا منتشر شود؟ یک یا چند گزینه را بزن و بعد پیش‌نمایش ارسال را انتخاب کن.',[[('✅ ' if value in targets else '')+name] for name,value in choices]+[['همه اعضا و گروه‌ها'],['پیش‌نمایش ارسال'],['لغو ارسال']]);return True
+    draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone();targets=json.loads(draft['targets']);choices=target_choices()
+    selected=[name for name,value in choices if value in targets]
+    if selected:
+        prompt='انتخاب ثبت شد: '+ '، '.join(selected)+'\nبرای رفتن به مرحله تأیید، «پیش‌نمایش ارسال» را بزن. برای تغییر انتخاب می‌توانی گزینه‌های دیگر را هم بزنی.'
+    else:
+        prompt='این پیام کجا منتشر شود؟ «همه اعضا و گروه‌ها» مستقیم پیش‌نمایش را باز می‌کند؛ یا مخاطبان دلخواه را انتخاب کن و «پیش‌نمایش ارسال» را بزن.'
+    if len(choices)==1:
+        prompt+='\nفعلاً هیچ گروهی در این سرور شناسایی نشده؛ ارسال فقط به اعضای بات خواهد بود.'
+    say(prompt,[[('✅ ' if value in targets else '')+name] for name,value in choices]+[['همه اعضا و گروه‌ها'],['پیش‌نمایش ارسال'],['لغو ارسال']]);return True

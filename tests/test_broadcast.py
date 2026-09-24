@@ -57,10 +57,23 @@ class BroadcastTests(unittest.TestCase):
   self.msg('همه اعضا و گروه‌ها')
   targets=json.loads(self.rows('SELECT targets FROM broadcast_drafts')[0][0])
   self.assertEqual(set(targets),{'members','-555'})
-  self.msg('پیش‌نمایش ارسال')
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'confirm')
+  self.assertFalse(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
   nonce=self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
   self.msg('تأیید ارسال '+nonce)
   self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5,-555})
+ def test_no_groups_shows_members_only_hint(self):
+  self.msg('/broadcast');self.msg('Hello')
+  body=self.rows('SELECT body FROM outbox ORDER BY id DESC LIMIT 1')[0][0]
+  self.assertIn('فعلاً هیچ گروهی',body)
+ def test_all_targets_without_groups(self):
+  self.msg('/broadcast');self.msg('Hello');self.msg('همه اعضا و گروه‌ها')
+  self.assertEqual(json.loads(self.rows('SELECT targets FROM broadcast_drafts')[0][0]),['members'])
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'confirm')
+  self.assertEqual(len(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''")),1)
+ def test_cancel_clears_preview_outbox(self):
+  self.compose();self.assertTrue(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
+  self.msg('لغو ارسال');self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
  def test_membership_event_discovers_and_removes_group(self):
   for state,active in [('administrator',1),('left',0)]:
    self.u+=1
