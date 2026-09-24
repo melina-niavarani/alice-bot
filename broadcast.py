@@ -8,7 +8,7 @@ OWNERS = {"telegram": OWNER, "bale": 1984558572}
 def destination_table(platform):
     return "bale_destinations" if platform == "bale" else "destinations"
 ADMIN = [['ارسال همگانی', 'گزارش ارسال'], ['مقصدهای ارسال', 'بازگشت']]
-AUDIENCE = [['ارسال به همهٔ اعضا و گروه‌ها'], ['ارسال فقط به اعضای بات'], ['انتخاب گروه‌ها'], ['تغییر پیام', 'لغو ارسال']]
+AUDIENCE = [['ارسال به همهٔ اعضا و گروه‌ها'], ['ارسال فقط به اعضای بات'], ['ارسال به همهٔ گروه‌ها'], ['انتخاب گروه‌ها'], ['تغییر پیام', 'لغو ارسال']]
 
 def setup(db):
     db.executescript('''
@@ -91,7 +91,7 @@ def handle(store,db,platform,msg):
         buttons.extend([['ارسال به انتخاب‌شده‌ها'],['بازگشت به مقصدها'],['تغییر پیام', 'لغو ارسال']])
         return buttons
     def audience_menu():
-        return AUDIENCE if len(target_choices())>1 else [['ارسال فقط به اعضای بات'],['تغییر پیام', 'لغو ارسال']]
+        return AUDIENCE
     if chat.get('type')!='private':
         if owner and chat.get('type') in ('group','supergroup') and command in ('/connect','/disconnect'):
             execute('INSERT INTO destinations(chat,title,active) VALUES (?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active',(ident,chat.get('title','گروه آلیس'),int(command=='/connect')))
@@ -115,7 +115,7 @@ def handle(store,db,platform,msg):
         say('پیامی را که می‌خواهی منتشر شود بفرست: متن، یک عکس یا یک ویدئوی کوتاه همراه کپشن. ویدئو حداکثر ۲۰ مگابایت باشد.',[['لغو ارسال']]);return True
     draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone()
     if not draft:
-        admin_controls = {'لغو ارسال','پیش‌نمایش ارسال','اعضای بات','همه اعضا و گروه‌ها','ارسال به همهٔ اعضا و گروه‌ها','ارسال فقط به اعضای بات','انتخاب گروه‌ها','ارسال به انتخاب‌شده‌ها','بازگشت به مقصدها','تغییر پیام'}
+        admin_controls = {'لغو ارسال','پیش‌نمایش ارسال','اعضای بات','همه اعضا و گروه‌ها','ارسال به همهٔ اعضا و گروه‌ها','ارسال فقط به اعضای بات','ارسال به همهٔ گروه‌ها','انتخاب گروه‌ها','ارسال به انتخاب‌شده‌ها','بازگشت به مقصدها','تغییر پیام'}
         if text in admin_controls or text.startswith(('تأیید ارسال ', 'گروه ', '✅ ')):
             return True
         controls = {'بدنسازی','استخر و سونا','نشانی مجموعه','بازگشت','تنظیم خبرها','عضویت در خبرها','توقف خبرها','علاقه‌مندی‌ها'}
@@ -151,15 +151,24 @@ def handle(store,db,platform,msg):
         payload.update({'_version':3,'_source_platform':platform})
         execute("UPDATE broadcast_drafts SET stage='targets',payload=? WHERE owner=?",(json.dumps(payload),OWNER))
         groups=len(target_choices())-1
-        prompt=('پیام آماده است. کجا منتشر شود؟\n«همه» یعنی اعضای هر دو بات و %s گروه ثبت‌شده. دکمهٔ ارسال، انتشار را شروع می‌کند.'%groups if groups else 'پیام آماده است. هنوز گروهی ثبت نشده؛ می‌توانی آن را برای اعضای هر دو بات بفرستی.')
+        prompt=('پیام آماده است. کجا منتشر شود؟\n«همه» یعنی اعضای هر دو بات و %s گروه ثبت‌شده. دکمهٔ ارسال، انتشار را شروع می‌کند.'%groups if groups else 'پیام آماده است. هنوز گروهی ثبت نشده؛ گزینه‌های مربوط به گروه تا ثبت گروه، چیزی منتشر نمی‌کنند.')
         say(prompt,audience_menu())
         return True
     payload=json.loads(draft['payload'])
     if draft['stage']=='targets':
+        groups=[value for _,value in target_choices() if value!='members']
         if text=='ارسال به همهٔ اعضا و گروه‌ها':
-            return publish([value for _,value in target_choices()],payload)
+            if not groups:
+                say('هنوز گروهی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد. برای ارسال به اعضای بات، گزینهٔ مخصوص آن را بزن.',audience_menu())
+                return True
+            return publish(['members']+groups,payload)
         if text=='ارسال فقط به اعضای بات':
             return publish(['members'],payload)
+        if text=='ارسال به همهٔ گروه‌ها':
+            if not groups:
+                say('هنوز گروهی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد.',audience_menu())
+                return True
+            return publish(groups,payload)
         if text=='انتخاب گروه‌ها':
             execute("UPDATE broadcast_drafts SET stage='groups',targets='[]' WHERE owner=?",(OWNER,))
             choices=target_choices()

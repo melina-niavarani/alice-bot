@@ -47,7 +47,7 @@ class BroadcastTests(unittest.TestCase):
   self.msg('/broadcast')
   self.msg('',video={'file_id':'test_video','file_size':1024},caption='سانس جدید')
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
-  self.msg('ارسال به همهٔ اعضا و گروه‌ها')
+  self.msg('ارسال فقط به اعضای بات')
   with self.s.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL')
   calls=[]
   class API:
@@ -78,17 +78,30 @@ class BroadcastTests(unittest.TestCase):
   self.assertFalse(self.rows('SELECT * FROM broadcast_drafts'))
   self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
   self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5,-555})
- def test_no_groups_shows_members_only_hint(self):
+ def test_no_groups_keeps_all_options_visible(self):
   self.msg('/broadcast');self.msg('Hello')
   body=self.rows('SELECT body FROM outbox ORDER BY id DESC LIMIT 1')[0][0]
   self.assertIn('هنوز گروهی ثبت نشده',body)
   markup=json.loads(self.rows('SELECT markup FROM outbox ORDER BY id DESC LIMIT 1')[0][0])
   self.assertIn(['ارسال فقط به اعضای بات'],markup['keyboard'])
-  self.assertNotIn(['انتخاب گروه‌ها'],markup['keyboard'])
+  self.assertIn(['ارسال به همهٔ گروه‌ها'],markup['keyboard'])
+  self.assertIn(['ارسال به همهٔ اعضا و گروه‌ها'],markup['keyboard'])
+  self.assertIn(['انتخاب گروه‌ها'],markup['keyboard'])
  def test_all_targets_without_groups(self):
   self.msg('/start',user=5);self.msg('/broadcast');self.msg('Hello');self.msg('ارسال فقط به اعضای بات')
   self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5})
   self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
+ def test_no_groups_does_not_silently_send_to_members_from_all_button(self):
+  self.msg('/start',user=5);self.msg('/broadcast');self.msg('Hello')
+  self.msg('ارسال به همهٔ اعضا و گروه‌ها')
+  self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
+  self.msg('ارسال به همهٔ گروه‌ها')
+  self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
+ def test_all_groups_excludes_private_members(self):
+  self.msg('/start',user=5);self.msg('/connect',chat=-100,kind='supergroup')
+  self.msg('/broadcast');self.msg('Hello');self.msg('ارسال به همهٔ گروه‌ها')
+  self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{-100})
  def test_back_to_audience_and_cancel(self):
   self.compose();self.msg('بازگشت به مقصدها')
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')

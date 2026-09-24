@@ -43,6 +43,11 @@ class SharedBroadcastTests(unittest.TestCase):
  def test_members_means_both_without_groups(self):
   self.msg('bale','News');self.msg('bale','ارسال فقط به اعضای بات')
   self.assertEqual({tuple(r) for r in self.rows('SELECT platform,chat FROM outbox WHERE campaign IS NOT NULL')},{('telegram',42),('bale',42)})
+ def test_all_groups_from_either_admin_excludes_private_members(self):
+  for source in OWNERS:
+   self.msg(source,'Group notice');self.msg(source,'ارسال به همهٔ گروه‌ها')
+   rows=self.rows('SELECT platform,chat FROM outbox WHERE campaign=(SELECT MAX(id) FROM campaigns)')
+   self.assertEqual({tuple(r) for r in rows},{('telegram',-100),('bale',-100)})
  def test_selected_group_id_does_not_cross_platform(self):
   self.msg('telegram','News');self.msg('telegram','انتخاب گروه‌ها');self.msg('telegram','گروه بله · Same name · -100')
   self.msg('telegram','ارسال به انتخاب‌شده‌ها')
