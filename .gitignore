@@ -1,0 +1,26 @@
+# Local secrets and env files
+.env
+.env.*
+!.env.example
+
+# Local runtime data and databases
+/data/
+*.sqlite3
+*.db
+*.db-journal
+*.lock
+
+# Python cache and bytecode
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS and editor noise
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Log files
+*.log
