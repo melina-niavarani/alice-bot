@@ -21,11 +21,11 @@ class BaleAdminTests(unittest.TestCase):
    with s.db() as db:
     markup=json.loads(db.execute('SELECT markup FROM outbox ORDER BY id DESC LIMIT 1').fetchone()[0]);self.assertIn(['مدیریت ارسال','ارسال همگانی'],markup['keyboard'])
    for platform in ('telegram','bale'):send(platform,OWNERS[platform],'/connect',-100)
-   send('bale',OWNERS['bale'],'/broadcast');send('bale',OWNERS['bale'],'Test notice');send('bale',OWNERS['bale'],'اعضای بات');send('bale',OWNERS['bale'],'گروه -100 · Test');send('bale',OWNERS['bale'],'پیش‌نمایش ارسال')
+   send('bale',OWNERS['bale'],'/broadcast');send('bale',OWNERS['bale'],'Test notice');send('bale',OWNERS['bale'],'اعضای بات');send('bale',OWNERS['bale'],'گروه بله · Test · -100');send('bale',OWNERS['bale'],'پیش‌نمایش ارسال')
    with s.db() as db:nonce=db.execute('SELECT nonce FROM bale_broadcast_drafts').fetchone()[0]
    send('bale',OWNERS['bale'],'تأیید ارسال '+nonce)
    with s.db() as db:
-    self.assertEqual({r[0] for r in db.execute('SELECT platform FROM outbox WHERE campaign IS NOT NULL')},{'bale'})
+    self.assertEqual({r[0] for r in db.execute('SELECT platform FROM outbox WHERE campaign IS NOT NULL')},{'telegram','bale'})
     self.assertEqual(db.execute('SELECT COUNT(*) FROM broadcast_runs').fetchone()[0],0)
     self.assertEqual(db.execute('SELECT COUNT(*) FROM bale_broadcast_runs').fetchone()[0],1)
     db.execute('DELETE FROM outbox WHERE campaign IS NULL OR destination=0')

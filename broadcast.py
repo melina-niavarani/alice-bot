@@ -3,6 +3,7 @@ import json
 import secrets
 import time
 OWNER = 92655562
+LABELS = {'telegram':'تلگرام', 'bale':'بله'}
 OWNERS = {"telegram": OWNER, "bale": 1984558572}
 
 def destination_table(platform):
@@ -60,7 +61,7 @@ def handle(store,db,platform,msg):
     chat=msg.get('chat',{}); ident=chat.get('id'); owner=msg.get('from',{}).get('id')==OWNER and not msg.get('sender_chat')
     def say(body,keyboard=ADMIN):store.queue(db,platform,ident,body,keyboard)
     def target_choices():
-        return [('اعضای بات','members')]+[('گروه '+str(r['chat'])+' · '+r['title'][:35],str(r['chat'])) for r in execute('SELECT * FROM destinations WHERE active=1')]
+        return [('اعضای بات','members')]+[('گروه '+LABELS[p]+' · '+r['title'][:35]+' · '+str(r['chat']),p+':'+str(r['chat'])) for p in OWNERS for r in db.execute('SELECT * FROM '+destination_table(p)+' WHERE active=1')]
     def clear_previews():
         execute("DELETE FROM outbox WHERE platform=? AND chat=? AND campaign IS NULL AND body=''",(platform,ident))
     if chat.get('type')!='private':
@@ -70,22 +71,22 @@ def handle(store,db,platform,msg):
         return True
     if not owner or ident != OWNER:return False
     if command=='/admin' or text in ('مدیریت ارسال','مقصدهای ارسال'):
-        rows=execute('SELECT * FROM destinations WHERE active=1').fetchall()
-        say('مدیریت ارسال آلیس\nپیام یا عکس را مستقیم همین‌جا بفرست؛ سپس انتخاب کن کجا منتشر شود. گروه‌هایی که بات به آن‌ها اضافه شود، خودکار شناسایی می‌شوند.\n\nگروه‌های مجاز:\n'+('\n'.join(r['title'] for r in rows) or 'هنوز گروهی ثبت نشده.'));return True
+        rows=target_choices()[1:]
+        say('مدیریت ارسال آلیس\nپیام یا عکس را مستقیم همین‌جا بفرست؛ سپس انتخاب کن کجا منتشر شود. گروه‌هایی که بات به آن‌ها اضافه شود، خودکار شناسایی می‌شوند.\n\nگروه‌های مجاز:\n'+('\n'.join(name for name,key in rows) or 'هنوز گروهی ثبت نشده.'));return True
     if text=='گزارش ارسال' or command=='/report':
-        runs=execute('SELECT campaign FROM broadcast_runs WHERE owner=? ORDER BY campaign DESC LIMIT 5',(OWNER,)).fetchall()
+        runs=db.execute('SELECT campaign FROM broadcast_runs UNION SELECT campaign FROM bale_broadcast_runs ORDER BY campaign DESC LIMIT 5').fetchall()
         labels={'sent':'تحویل پیام‌رسان','pending':'در صف','sending':'در حال ارسال','failed':'ناموفق','unknown':'نتیجه نامشخص','skipped':'لغوشده'}
         lines=[]
         for run in runs:
-            counts=execute('SELECT status,COUNT(*) n FROM outbox WHERE campaign=? GROUP BY status',(run[0],)).fetchall()
-            lines.append('#%s: '%run[0]+' · '.join(labels.get(r['status'],r['status'])+': '+str(r['n']) for r in counts))
+            counts=execute('SELECT platform,status,COUNT(*) n FROM outbox WHERE campaign=? GROUP BY platform,status',(run[0],)).fetchall()
+            lines.append('#%s: '%run[0]+' · '.join(LABELS[r['platform']]+' — '+labels.get(r['status'],r['status'])+': '+str(r['n']) for r in counts))
         say('\n'.join(lines) or 'هنوز ارسال همگانی ثبت نشده.');return True
     if text=='ارسال همگانی' or command=='/broadcast':
         execute('INSERT OR REPLACE INTO broadcast_drafts VALUES (?,?,?,?,?,?)',(OWNER,'content','{}','[]','',time.time()+3600))
         say('متن یا یک عکس همراه کپشن بفرست. آلبوم را به یک عکس تبدیل کن. تا انتخاب مقصد و تأیید نهایی هیچ پیامی منتشر نمی‌شود.',[['لغو ارسال']]);return True
     draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone()
     if not draft:
-        controls = {'بدنسازی','استخر و سونا','نشانی مجموعه','بازگشت','تنظیم خبرها','لغو ارسال','عضویت در خبرها','توقف خبرها','علاقه‌مندی‌ها','پیش‌نمایش ارسال','اعضای بات'}
+        controls = {'بدنسازی','استخر و سونا','نشانی مجموعه','بازگشت','تنظیم خبرها','لغو ارسال','عضویت در خبرها','توقف خبرها','علاقه‌مندی‌ها','پیش‌نمایش ارسال','اعضای بات','همه اعضا و گروه‌ها'}
         controls.update(store.config.get('interests', []))
         if (text and not text.startswith('/') and text not in controls and not text.startswith(('تأیید ارسال ', 'گروه ', '✅ '))) or msg.get('photo'):
             execute('INSERT OR REPLACE INTO broadcast_drafts VALUES (?,?,?,?,?,?)',(OWNER,'content','{}','[]','',time.time()+3600))
@@ -95,27 +96,38 @@ def handle(store,db,platform,msg):
         execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,));clear_previews()
         if text in ('/start','/menu','بازگشت'):return False
         say('پیش‌نویس ارسال لغو شد.');return True
+    if draft['stage']!='content' and json.loads(draft['payload']).get('_version')!=2:
+        execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,));clear_previews()
+        say('ارسال مشترک تلگرام و بله فعال شده؛ برای انتخاب دقیق مخاطبان، پیام را دوباره بفرست.');return True
     if draft['stage']=='content':
         if msg.get('media_group_id') or not (msg.get('text') or msg.get('photo')):
             say('یک متن یا یک عکس همراه کپشن بفرست؛ آلبوم پشتیبانی نمی‌شود.',[['لغو ارسال']]);return True
         if msg.get('photo'):
             payload={'method':'sendPhoto','photo':msg['photo'][-1]['file_id'],'caption':msg.get('caption',''),'caption_entities':msg.get('caption_entities',[])}
         else:payload={'method':'sendMessage','text':msg['text'],'entities':msg.get('entities',[])}
+        if len(payload.get('text',payload.get('caption','')).encode('utf-16-le'))//2 > (4096 if payload['method']=='sendMessage' else 1024):
+            say('متن باید حداکثر ۴۰۹۶ و کپشن عکس حداکثر ۱۰۲۴ نویسه باشد.',[['لغو ارسال']]);return True
+        payload.update({'_version':2,'_source_platform':platform})
         execute("UPDATE broadcast_drafts SET stage='targets',payload=? WHERE owner=?",(json.dumps(payload),OWNER))
     elif draft['stage']=='confirm':
         if text!='تأیید ارسال '+draft['nonce']:
             say('برای ارسال فقط دکمه تأیید همین پیش‌نویس را بزن؛ یا لغو ارسال.',[['تأیید ارسال '+draft['nonce']],['لغو ارسال']]);return True
         targets=json.loads(draft['targets']);payload=json.loads(draft['payload']);recipients=[]
         if 'members' in targets:
-            recipients.extend((r[0],0) for r in execute("SELECT chat FROM members WHERE platform=? AND subscribed=1", (platform,)))
-        recipients.extend((r[0],1) for r in execute('SELECT chat FROM destinations WHERE active=1') if str(r[0]) in targets)
+            recipients.extend((r['platform'],r['chat'],0) for r in db.execute("SELECT platform,chat FROM members WHERE subscribed=1 AND platform IN ('telegram','bale')"))
+        for p in OWNERS:
+            recipients.extend((p,r[0],1) for r in db.execute('SELECT chat FROM '+destination_table(p)+' WHERE active=1') if p+':'+str(r[0]) in targets)
         if not recipients:say('مخاطب فعالی باقی نمانده؛ ارسال انجام نشد.');return True
         campaign=execute("INSERT INTO campaigns(body,segment,status) VALUES (?,'all','queued')",(payload.get('text',payload.get('caption','[عکس]')),)).lastrowid
         execute('INSERT INTO broadcast_runs VALUES (?,?)',(campaign,OWNER))
-        for target,is_group in recipients:
-            data={k:v for k,v in payload.items() if k!='method'}
+        for target_platform,target,is_group in recipients:
+            data={k:v for k,v in payload.items() if k!='method' and not k.startswith('_')}
+            if target_platform!=platform:
+                for field in ('entities','caption_entities'):
+                    if field in data: data[field]=[e for e in data[field] if e.get('type') not in ('text_mention','custom_emoji')]
+                if payload['method']=='sendPhoto':data['_photo_source']=platform
             markup={}
-            execute('INSERT INTO outbox(platform,chat,body,markup,campaign,method,payload,destination) VALUES (?,?,?,?,?,?,?,?)',(platform,target,data.get('text',data.get('caption','')),json.dumps(markup),campaign,payload['method'],json.dumps(data),is_group))
+            execute('INSERT INTO outbox(platform,chat,body,markup,campaign,method,payload,destination) VALUES (?,?,?,?,?,?,?,?)',(target_platform,target,data.get('text',data.get('caption','')),json.dumps(markup),campaign,payload['method'],json.dumps(data),is_group))
         execute('DELETE FROM broadcast_drafts WHERE owner=?',(OWNER,));clear_previews()
         say('ارسال #%s برای %s مقصد در صف قرار گرفت. «گزارش ارسال» نتیجه را نشان می‌دهد؛ تحویل پیام‌رسان به معنای خوانده‌شدن نیست.'%(campaign,len(recipients)));return True
     else:
@@ -132,16 +144,16 @@ def handle(store,db,platform,msg):
             payload=json.loads(draft['payload']);nonce=secrets.token_hex(3)
             execute("UPDATE broadcast_drafts SET stage='confirm',nonce=? WHERE owner=?",(nonce,OWNER))
             clear_previews()
-            execute('INSERT INTO outbox(platform,chat,body,markup,method,payload) VALUES (?,?,?,?,?,?)',(platform,ident,'','{}',payload['method'],json.dumps({k:v for k,v in payload.items() if k!='method'})))
-            count=execute("SELECT COUNT(*) FROM members WHERE platform=? AND subscribed=1", (platform,)).fetchone()[0]
-            names=[name for name,value in choices if value in targets]
+            execute('INSERT INTO outbox(platform,chat,body,markup,method,payload) VALUES (?,?,?,?,?,?)',(platform,ident,'','{}',payload['method'],json.dumps({k:v for k,v in payload.items() if k!='method' and not k.startswith('_')})))
+            count='، '.join(LABELS[p]+': '+str(db.execute('SELECT COUNT(*) FROM members WHERE platform=? AND subscribed=1',(p,)).fetchone()[0]) for p in OWNERS)
+            names=[('اعضای هر دو بات تلگرام و بله' if value=='members' else name) for name,value in choices if value in targets]
             say('پیش‌نمایش بالا فقط برای توست.\nمقصدها: '+ '، '.join(names)+('\nاعضای فعال خبرها: '+str(count) if 'members' in targets else '')+'\nتأیید، ارسال واقعی را شروع می‌کند.',[['تأیید ارسال '+nonce],['لغو ارسال']]);return True
     draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone();targets=json.loads(draft['targets']);choices=target_choices()
     selected=[name for name,value in choices if value in targets]
     if selected:
         prompt='انتخاب ثبت شد: '+ '، '.join(selected)+'\nبرای رفتن به مرحله تأیید، «پیش‌نمایش ارسال» را بزن. برای تغییر انتخاب می‌توانی گزینه‌های دیگر را هم بزنی.'
     else:
-        prompt='این پیام کجا منتشر شود؟ «همه اعضا و گروه‌ها» مستقیم پیش‌نمایش را باز می‌کند؛ یا مخاطبان دلخواه را انتخاب کن و «پیش‌نمایش ارسال» را بزن.'
+        prompt='اعضای بات یعنی اعضای تلگرام و بله.\nاین پیام کجا منتشر شود؟ «همه اعضا و گروه‌ها» مستقیم پیش‌نمایش را باز می‌کند؛ یا مخاطبان دلخواه را انتخاب کن و «پیش‌نمایش ارسال» را بزن.'
     if len(choices)==1:
         prompt+='\nفعلاً هیچ گروهی در این سرور شناسایی نشده؛ ارسال فقط به اعضای بات خواهد بود.'
     say(prompt,[[('✅ ' if value in targets else '')+name] for name,value in choices]+[['همه اعضا و گروه‌ها'],['پیش‌نمایش ارسال'],['لغو ارسال']]);return True

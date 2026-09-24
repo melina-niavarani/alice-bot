@@ -56,11 +56,15 @@ class API:
 
     def __init__(self, platform, token):
         self.platform = platform
+        self.file_base = self.HOSTS[platform] + "/file/bot" + token + "/"
         self.base = self.HOSTS[platform] + "/bot" + token + "/"
 
     def call(self, method, **data):
         request = Request(self.base + method, json.dumps(data).encode(),
                           {"Content-Type": "application/json"})
+        return self._request(request)
+
+    def _request(self, request):
         try:
             with urlopen(request, timeout=40) as response:
                 result = json.load(response)
@@ -77,6 +81,32 @@ class API:
             code = int(result.get("error_code", 0))
             raise APIError(code, result.get("parameters", {}).get("retry_after", 0), code >= 500)
         return result.get("result")
+
+
+    def download_photo(self, file_id):
+        info = self.call('getFile', file_id=file_id)
+        path = info.get('file_path', '')
+        if not path or path.startswith('/') or ':' in path or '..' in path.split('/'):
+            raise APIError(400)
+        try:
+            with urlopen(self.file_base + path, timeout=40) as response:
+                content = response.read(10 * 1024 * 1024 + 1)
+        except (URLError, OSError, ValueError):
+            raise APIError(502) from None
+        if not content or len(content) > 10 * 1024 * 1024:
+            raise APIError(413)
+        return content
+
+    def upload_photo(self, content, **data):
+        boundary = 'Alice' + secrets.token_hex(16)
+        chunks = []
+        for name, value in data.items():
+            value = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
+            chunks.append(('--' + boundary + '\r\nContent-Disposition: form-data; name="' + name + '"\r\n\r\n' + value + '\r\n').encode())
+        chunks.append(('--' + boundary + '\r\nContent-Disposition: form-data; name="photo"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode())
+        chunks.extend([content, ('\r\n--' + boundary + '--\r\n').encode()])
+        return self._request(Request(self.base + 'sendPhoto', b''.join(chunks),
+                            {'Content-Type': 'multipart/form-data; boundary=' + boundary}))
 
 
 class Store:
@@ -264,7 +294,19 @@ class Store:
             markup = json.loads(row["markup"] or "{}")
             if markup:
                 payload["reply_markup"] = markup
-            api.call(row["method"] or "sendMessage", chat_id=row["chat"], **payload)
+            source = payload.pop('_photo_source', None)
+            if source:
+                token = os.environ.get(source.upper() + '_BOT_TOKEN') if source in API.HOSTS else None
+                if not token:
+                    raise APIError(400)
+                # Never share the source token/download URL with the other platform.
+                try:
+                    photo = API(source, token).download_photo(payload.pop('photo'))
+                except APIError as exc:
+                    raise APIError(exc.code, exc.retry_after, uncertain=False) from None
+                api.upload_photo(photo, chat_id=row["chat"], **payload)
+            else:
+                api.call(row["method"] or "sendMessage", chat_id=row["chat"], **payload)
         except APIError as exc:
             if exc.code == 429 and row["attempts"] < 8:
                 status, due = "pending", time.time() + max(1, int(exc.retry_after or 30))

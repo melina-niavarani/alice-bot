@@ -18,7 +18,7 @@ class BroadcastTests(unittest.TestCase):
  def compose(self,photo=False):
   self.msg('عضویت در خبرها',user=5);self.msg('/connect',chat=-100,kind='supergroup');self.msg('/broadcast')
   self.msg('Hello' if not photo else '',**({'photo':[{'file_id':'test_photo'}],'caption':'Pool offer'} if photo else {}))
-  self.msg('اعضای بات');self.msg('گروه -100 · Pool');self.msg('پیش‌نمایش ارسال')
+  self.msg('اعضای بات');self.msg('گروه تلگرام · Pool · -100');self.msg('پیش‌نمایش ارسال')
   return self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
  def test_non_owner_and_anonymous_cannot_register_or_broadcast(self):
   self.msg('/broadcast',user=5);self.msg('/connect',user=5,chat=-100,kind='group');self.msg('/connect',chat=-100,kind='group',sender_chat={'id':-100})
@@ -56,7 +56,7 @@ class BroadcastTests(unittest.TestCase):
   self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
   self.msg('همه اعضا و گروه‌ها')
   targets=json.loads(self.rows('SELECT targets FROM broadcast_drafts')[0][0])
-  self.assertEqual(set(targets),{'members','-555'})
+  self.assertEqual(set(targets),{'members','telegram:-555'})
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'confirm')
   self.assertFalse(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
   nonce=self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
