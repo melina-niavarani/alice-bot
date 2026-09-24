@@ -42,6 +42,26 @@ class BroadcastTests(unittest.TestCase):
   class API:
    def call(self,m,**data):calls.append((m,data))
   self.s.deliver_one('telegram',API());self.assertEqual(calls[0][0],'sendPhoto');self.assertEqual(calls[0][1]['photo'],'test_photo');self.assertEqual(calls[0][1]['caption'],'Pool offer')
+ def test_video_is_accepted_and_sent_on_same_platform(self):
+  self.msg('/start',user=5)
+  self.msg('/broadcast')
+  self.msg('',video={'file_id':'test_video','file_size':1024},caption='سانس جدید')
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
+  self.msg('همه اعضا و گروه‌ها')
+  nonce=self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
+  self.msg('تأیید ارسال '+nonce)
+  with self.s.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL')
+  calls=[]
+  class API:
+   def call(self,m,**data):calls.append((m,data))
+  self.s.deliver_one('telegram',API())
+  self.assertEqual(calls[0][0],'sendVideo')
+  self.assertEqual(calls[0][1]['video'],'test_video')
+  self.assertEqual(calls[0][1]['caption'],'سانس جدید')
+ def test_oversize_video_stays_in_compose_stage(self):
+  self.msg('/broadcast')
+  self.msg('',video={'file_id':'large','file_size':20*1024*1024+1})
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'content')
  def test_cancel_and_stale_confirm(self):
   nonce=self.compose();self.msg('لغو ارسال');self.msg('تأیید ارسال '+nonce);self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
  def test_toggle_target_off(self):

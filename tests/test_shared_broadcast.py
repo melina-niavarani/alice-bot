@@ -77,3 +77,30 @@ class SharedBroadcastTests(unittest.TestCase):
   req=request.call_args[0][0]
   self.assertIn(b'name="photo"',req.data);self.assertIn('سلام'.encode(),req.data)
   self.assertNotIn(b'destination-secret',req.data)
+ def test_video_is_uploaded_as_bytes_in_both_directions(self):
+  for source in OWNERS:
+   target='bale' if source=='telegram' else 'telegram'
+   self.msg(source,'',video={'file_id':'source-video','file_size':1234},caption='آلیس')
+   self.msg(source,'همه اعضا و گروه‌ها');self.msg(source,'تأیید ارسال '+self.draft(source)['nonce'])
+   with self.store.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL OR platform!=?',(target,))
+   calls=[]
+   class Fake:
+    def call(self,*a,**k):raise AssertionError('foreign file id must not be sent')
+    def upload_video(self,content,**data):calls.append((content,data))
+   with patch.dict(os.environ,{source.upper()+'_BOT_TOKEN':'test-secret'}),patch.object(API,'download_video',return_value=b'mp4') as download:
+    self.store.deliver_one(target,Fake())
+    download.assert_called_once_with('source-video')
+   self.assertEqual(calls[0][0],b'mp4')
+   self.assertEqual(calls[0][1]['caption'],'آلیس')
+   self.assertNotIn('video',calls[0][1])
+   self.assertNotIn('_media_source',calls[0][1])
+   with self.store.db() as db:db.execute('DELETE FROM outbox')
+ def test_upload_video_uses_multipart_video_field(self):
+  api=API('bale','destination-secret')
+  with patch.object(api,'_request',return_value={}) as request:
+   api.upload_video(b'mp4',chat_id=42,caption='سلام')
+  req=request.call_args[0][0]
+  self.assertIn(b'name="video"',req.data)
+  self.assertIn(b'video/mp4',req.data)
+  self.assertIn('سلام'.encode(),req.data)
+  self.assertNotIn(b'destination-secret',req.data)

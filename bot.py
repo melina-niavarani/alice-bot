@@ -83,30 +83,42 @@ class API:
         return result.get("result")
 
 
-    def download_photo(self, file_id):
+    def download_file(self, file_id, max_bytes=10 * 1024 * 1024):
         info = self.call('getFile', file_id=file_id)
         path = info.get('file_path', '')
         if not path or path.startswith('/') or ':' in path or '..' in path.split('/'):
             raise APIError(400)
         try:
             with urlopen(self.file_base + path, timeout=40) as response:
-                content = response.read(10 * 1024 * 1024 + 1)
+                content = response.read(max_bytes + 1)
         except (URLError, OSError, ValueError):
             raise APIError(502) from None
-        if not content or len(content) > 10 * 1024 * 1024:
+        if not content or len(content) > max_bytes:
             raise APIError(413)
         return content
 
-    def upload_photo(self, content, **data):
+    def download_photo(self, file_id):
+        return self.download_file(file_id)
+
+    def download_video(self, file_id):
+        return self.download_file(file_id, 20 * 1024 * 1024)
+
+    def upload_media(self, method, field, filename, content_type, content, **data):
         boundary = 'Alice' + secrets.token_hex(16)
         chunks = []
         for name, value in data.items():
             value = json.dumps(value, ensure_ascii=False) if isinstance(value, (dict, list)) else str(value)
             chunks.append(('--' + boundary + '\r\nContent-Disposition: form-data; name="' + name + '"\r\n\r\n' + value + '\r\n').encode())
-        chunks.append(('--' + boundary + '\r\nContent-Disposition: form-data; name="photo"; filename="photo.jpg"\r\nContent-Type: image/jpeg\r\n\r\n').encode())
+        chunks.append(('--' + boundary + '\r\nContent-Disposition: form-data; name="' + field + '"; filename="' + filename + '"\r\nContent-Type: ' + content_type + '\r\n\r\n').encode())
         chunks.extend([content, ('\r\n--' + boundary + '--\r\n').encode()])
-        return self._request(Request(self.base + 'sendPhoto', b''.join(chunks),
+        return self._request(Request(self.base + method, b''.join(chunks),
                             {'Content-Type': 'multipart/form-data; boundary=' + boundary}))
+
+    def upload_photo(self, content, **data):
+        return self.upload_media('sendPhoto', 'photo', 'photo.jpg', 'image/jpeg', content, **data)
+
+    def upload_video(self, content, **data):
+        return self.upload_media('sendVideo', 'video', 'video.mp4', 'video/mp4', content, **data)
 
 
 class Store:
@@ -294,17 +306,23 @@ class Store:
             markup = json.loads(row["markup"] or "{}")
             if markup:
                 payload["reply_markup"] = markup
-            source = payload.pop('_photo_source', None)
+            source = payload.pop('_media_source', None) or payload.pop('_photo_source', None)
             if source:
                 token = os.environ.get(source.upper() + '_BOT_TOKEN') if source in API.HOSTS else None
                 if not token:
                     raise APIError(400)
                 # Never share the source token/download URL with the other platform.
                 try:
-                    photo = API(source, token).download_photo(payload.pop('photo'))
+                    if row['method'] == 'sendVideo':
+                        media = API(source, token).download_video(payload.pop('video'))
+                    else:
+                        media = API(source, token).download_photo(payload.pop('photo'))
                 except APIError as exc:
                     raise APIError(exc.code, exc.retry_after, uncertain=False) from None
-                api.upload_photo(photo, chat_id=row["chat"], **payload)
+                if row['method'] == 'sendVideo':
+                    api.upload_video(media, chat_id=row["chat"], **payload)
+                else:
+                    api.upload_photo(media, chat_id=row["chat"], **payload)
             else:
                 api.call(row["method"] or "sendMessage", chat_id=row["chat"], **payload)
         except APIError as exc:
