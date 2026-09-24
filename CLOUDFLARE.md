@@ -21,8 +21,9 @@ Add these as **encrypted runtime secrets**, not GitHub files or build variables:
 
 - `alice-bot`: `TELEGRAM_BOT_TOKEN`, `BALE_BOT_TOKEN`,
   `TELEGRAM_WEBHOOK_SECRET`, `BALE_WEBHOOK_SECRET`, `SETUP_SECRET`.
-- `alice-miniapp`: `TELEGRAM_WEBAPP_SECRET` (the Telegram bot token),
-  `BALE_WEBAPP_SECRET` (the Bale bot token), `ALICE_OWNER_ID=92655562`,
+- `alice-miniapp`: `TELEGRAM_WEBAPP_SECRET` and `BALE_WEBAPP_SECRET`
+  (the 64-character hex WebAppData HMAC keys derived from the respective bot
+  tokens, **not the raw bot tokens**), `ALICE_OWNER_ID=92655562`,
   `ALICE_BALE_OWNER_ID=1984558572`.
 
 The bot's public miniapp URL and owner IDs are ordinary Wrangler vars. Update
