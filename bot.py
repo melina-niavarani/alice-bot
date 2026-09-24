@@ -196,7 +196,7 @@ class Store:
             if previous and uid < previous[0]:
                 return
             broadcast.observe_group(self, db, platform, update)
-            msg = update.get("message", {})
+            msg = update.get("message") or update.get("channel_post") or {}
             chat = msg.get("chat", {})
             if broadcast.handle(self, db, platform, msg):
                 pass
@@ -343,7 +343,7 @@ def poll(store, platform, api, stop, health):
         try:
             with store.db() as db:
                 row = db.execute("SELECT value FROM offsets WHERE platform=?", (platform,)).fetchone()
-            options = {"allowed_updates": ["message", "my_chat_member"]} if platform == "telegram" else {}
+            options = {"allowed_updates": ["message", "channel_post", "my_chat_member"]} if platform == "telegram" else {}
             updates = api.call("getUpdates", offset=row[0] if row else 0, timeout=25, limit=50, **options)
             for update in updates or []:
                 store.handle(platform, update)

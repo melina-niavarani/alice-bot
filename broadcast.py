@@ -8,36 +8,48 @@ OWNERS = {"telegram": OWNER, "bale": 1984558572}
 def destination_table(platform):
     return "bale_destinations" if platform == "bale" else "destinations"
 ADMIN = [['ارسال همگانی', 'گزارش ارسال'], ['مقصدهای ارسال', 'بازگشت']]
-AUDIENCE = [['ارسال به همهٔ اعضا و گروه‌ها'], ['ارسال فقط به اعضای بات'], ['ارسال به همهٔ گروه‌ها'], ['انتخاب گروه‌ها'], ['تغییر پیام', 'لغو ارسال']]
+AUDIENCE = [['ارسال به همهٔ اعضا و گروه‌ها'], ['ارسال فقط به اعضای بات'], ['ارسال به همهٔ گروه‌ها و کانال‌ها'], ['انتخاب گروه‌ها و کانال‌ها'], ['تغییر پیام', 'لغو ارسال']]
 
 def setup(db):
     db.executescript('''
-    CREATE TABLE IF NOT EXISTS destinations(chat INTEGER PRIMARY KEY,title TEXT,active INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS destinations(chat INTEGER PRIMARY KEY,title TEXT,active INTEGER DEFAULT 1,kind TEXT DEFAULT 'group');
     CREATE TABLE IF NOT EXISTS broadcast_drafts(owner INTEGER PRIMARY KEY,stage TEXT,payload TEXT,targets TEXT,nonce TEXT,expires REAL);
     CREATE TABLE IF NOT EXISTS broadcast_runs(campaign INTEGER PRIMARY KEY,owner INTEGER);
     ''')
     db.executescript("""
-    CREATE TABLE IF NOT EXISTS bale_destinations(chat INTEGER PRIMARY KEY,title TEXT,active INTEGER DEFAULT 1);
+    CREATE TABLE IF NOT EXISTS bale_destinations(chat INTEGER PRIMARY KEY,title TEXT,active INTEGER DEFAULT 1,kind TEXT DEFAULT 'group');
     CREATE TABLE IF NOT EXISTS bale_broadcast_drafts(owner INTEGER PRIMARY KEY,stage TEXT,payload TEXT,targets TEXT,nonce TEXT,expires REAL);
     CREATE TABLE IF NOT EXISTS bale_broadcast_runs(campaign INTEGER PRIMARY KEY,owner INTEGER);
     """)
     columns={r[1] for r in db.execute('PRAGMA table_info(outbox)')}
     for name,definition in [('method',"TEXT DEFAULT 'sendMessage'"),('payload',"TEXT DEFAULT '{}'"),('destination',"INTEGER DEFAULT 0")]:
         if name not in columns: db.execute('ALTER TABLE outbox ADD COLUMN '+name+' '+definition)
+    for table in ('destinations','bale_destinations'):
+        if 'kind' not in {r[1] for r in db.execute('PRAGMA table_info('+table+')')}:
+            db.execute("ALTER TABLE "+table+" ADD COLUMN kind TEXT DEFAULT 'group'")
 
 def observe_group(store, db, platform, update):
     event = update.get('my_chat_member', {})
-    msg = update.get('message', {})
+    msg = update.get('message') or update.get('channel_post') or {}
     chat = event.get('chat') or msg.get('chat', {})
-    if chat.get('type') not in ('group', 'supergroup'): return
+    if chat.get('type') not in ('group', 'supergroup', 'channel'): return
     ident = chat.get('id')
     if not isinstance(ident, int): return
     table = destination_table(platform)
+    kind = 'channel' if chat.get('type') == 'channel' else 'group'
+    if kind == 'channel':
+        # Channel posts have no trustworthy personal sender ID. A channel admin
+        # must explicitly publish /connect before it becomes a broadcast target.
+        if event:
+            status = event.get('new_chat_member', {}).get('status')
+            if status in ('left', 'kicked'):
+                db.execute('UPDATE '+table+' SET active=0 WHERE chat=?', (ident,))
+        return
     if event:
         member = event.get('new_chat_member', {})
         status = member.get('status')
         active = status in ('member', 'administrator', 'creator') or (status == 'restricted' and member.get('is_member', False))
-        db.execute('INSERT INTO '+table+'(chat,title,active) VALUES (?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active', (ident,chat.get('title','گروه'),int(active)))
+        db.execute('INSERT INTO '+table+'(chat,title,active,kind) VALUES (?,?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active,kind=excluded.kind', (ident,chat.get('title','مقصد آلیس'),int(active),kind))
     else:
         bot_id = store.config.get('bot_ids', {}).get(platform)
         left = msg.get('left_chat_member', {}).get('id')
@@ -46,7 +58,7 @@ def observe_group(store, db, platform, update):
             return
         joined = any(m.get('id') == bot_id for m in msg.get('new_chat_members', [])) if bot_id else False
         suffix = ',active=1' if joined else ''
-        db.execute('INSERT INTO '+table+'(chat,title,active) VALUES (?,?,1) ON CONFLICT(chat) DO UPDATE SET title=excluded.title'+suffix, (ident,chat.get('title','گروه')))
+        db.execute('INSERT INTO '+table+'(chat,title,active,kind) VALUES (?,?,1,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,kind=excluded.kind'+suffix, (ident,chat.get('title','مقصد آلیس'),kind))
 
 def handle(store,db,platform,msg):
     if platform not in OWNERS:return False
@@ -61,7 +73,7 @@ def handle(store,db,platform,msg):
     chat=msg.get('chat',{}); ident=chat.get('id'); owner=msg.get('from',{}).get('id')==OWNER and not msg.get('sender_chat')
     def say(body,keyboard=ADMIN):store.queue(db,platform,ident,body,keyboard)
     def target_choices():
-        return [('اعضای بات','members')]+[('گروه '+LABELS[p]+' · '+r['title'][:35]+' · '+str(r['chat']),p+':'+str(r['chat'])) for p in OWNERS for r in db.execute('SELECT * FROM '+destination_table(p)+' WHERE active=1')]
+        return [('اعضای بات','members')]+[(('کانال' if r['kind']=='channel' else 'گروه')+' '+LABELS[p]+' · '+r['title'][:35]+' · '+str(r['chat']),p+':'+str(r['chat'])) for p in OWNERS for r in db.execute('SELECT * FROM '+destination_table(p)+' WHERE active=1')]
     def clear_previews():
         execute("DELETE FROM outbox WHERE platform=? AND chat=? AND campaign IS NULL AND body=''",(platform,ident))
     def publish(targets, payload):
@@ -93,9 +105,16 @@ def handle(store,db,platform,msg):
     def audience_menu():
         return AUDIENCE
     if chat.get('type')!='private':
-        if owner and chat.get('type') in ('group','supergroup') and command in ('/connect','/disconnect'):
-            execute('INSERT INTO destinations(chat,title,active) VALUES (?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active',(ident,chat.get('title','گروه آلیس'),int(command=='/connect')))
-            say('این گروه به مقصدهای مجاز آلیس اضافه شد.' if command=='/connect' else 'ارسال به این گروه غیرفعال شد.',None)
+        group_admin = owner and chat.get('type') in ('group','supergroup')
+        channel_admin = chat.get('type')=='channel'  # Only channel admins can publish a channel post.
+        if isinstance(ident,int) and (group_admin or channel_admin) and command in ('/connect','/disconnect'):
+            kind='channel' if channel_admin else 'group'
+            execute('INSERT INTO destinations(chat,title,active,kind) VALUES (?,?,?,?) ON CONFLICT(chat) DO UPDATE SET title=excluded.title,active=excluded.active,kind=excluded.kind',(ident,chat.get('title','مقصد آلیس'),int(command=='/connect'),kind))
+            reply=('این '+('کانال' if channel_admin else 'گروه')+' به مقصدهای مجاز آلیس اضافه شد.' if command=='/connect' else 'ارسال به این '+('کانال' if channel_admin else 'گروه')+' غیرفعال شد.')
+            if channel_admin:
+                store.queue(db,platform,OWNER,reply+'\n'+chat.get('title','مقصد آلیس'),ADMIN)
+            else:
+                say(reply,None)
         return True
     if not owner or ident != OWNER:return False
     if command=='/admin' or text in ('مدیریت ارسال','مقصدهای ارسال'):
@@ -115,7 +134,7 @@ def handle(store,db,platform,msg):
         say('پیامی را که می‌خواهی منتشر شود بفرست: متن، یک عکس یا یک ویدئوی کوتاه همراه کپشن. ویدئو حداکثر ۲۰ مگابایت باشد.',[['لغو ارسال']]);return True
     draft=execute('SELECT * FROM broadcast_drafts WHERE owner=?',(OWNER,)).fetchone()
     if not draft:
-        admin_controls = {'لغو ارسال','پیش‌نمایش ارسال','اعضای بات','همه اعضا و گروه‌ها','ارسال به همهٔ اعضا و گروه‌ها','ارسال فقط به اعضای بات','ارسال به همهٔ گروه‌ها','انتخاب گروه‌ها','ارسال به انتخاب‌شده‌ها','بازگشت به مقصدها','تغییر پیام'}
+        admin_controls = {'لغو ارسال','پیش‌نمایش ارسال','اعضای بات','همه اعضا و گروه‌ها','ارسال به همهٔ اعضا و گروه‌ها','ارسال فقط به اعضای بات','ارسال به همهٔ گروه‌ها','ارسال به همهٔ گروه‌ها و کانال‌ها','انتخاب گروه‌ها','انتخاب گروه‌ها و کانال‌ها','ارسال به انتخاب‌شده‌ها','بازگشت به مقصدها','تغییر پیام'}
         if text in admin_controls or text.startswith(('تأیید ارسال ', 'گروه ', '✅ ')):
             return True
         controls = {'بدنسازی','استخر و سونا','نشانی مجموعه','بازگشت','تنظیم خبرها','عضویت در خبرها','توقف خبرها','علاقه‌مندی‌ها'}
@@ -151,7 +170,7 @@ def handle(store,db,platform,msg):
         payload.update({'_version':3,'_source_platform':platform})
         execute("UPDATE broadcast_drafts SET stage='targets',payload=? WHERE owner=?",(json.dumps(payload),OWNER))
         groups=len(target_choices())-1
-        prompt=('پیام آماده است. کجا منتشر شود؟\n«همه» یعنی اعضای هر دو بات و %s گروه ثبت‌شده. دکمهٔ ارسال، انتشار را شروع می‌کند.'%groups if groups else 'پیام آماده است. هنوز گروهی ثبت نشده؛ گزینه‌های مربوط به گروه تا ثبت گروه، چیزی منتشر نمی‌کنند.')
+        prompt=('پیام آماده است. کجا منتشر شود؟\n«همه» یعنی اعضای هر دو بات و %s گروه/کانال ثبت‌شده. دکمهٔ ارسال، انتشار را شروع می‌کند.'%groups if groups else 'پیام آماده است. هنوز گروه یا کانالی ثبت نشده؛ گزینه‌های مربوط به آن‌ها تا ثبت مقصد، چیزی منتشر نمی‌کنند.')
         say(prompt,audience_menu())
         return True
     payload=json.loads(draft['payload'])
@@ -159,17 +178,17 @@ def handle(store,db,platform,msg):
         groups=[value for _,value in target_choices() if value!='members']
         if text=='ارسال به همهٔ اعضا و گروه‌ها':
             if not groups:
-                say('هنوز گروهی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد. برای ارسال به اعضای بات، گزینهٔ مخصوص آن را بزن.',audience_menu())
+                say('هنوز گروه یا کانالی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد. برای ارسال به اعضای بات، گزینهٔ مخصوص آن را بزن.',audience_menu())
                 return True
             return publish(['members']+groups,payload)
         if text=='ارسال فقط به اعضای بات':
             return publish(['members'],payload)
-        if text=='ارسال به همهٔ گروه‌ها':
+        if text in ('ارسال به همهٔ گروه‌ها','ارسال به همهٔ گروه‌ها و کانال‌ها'):
             if not groups:
-                say('هنوز گروهی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد.',audience_menu())
+                say('هنوز گروه یا کانالی در مقصدهای ارسال ثبت نشده؛ چیزی منتشر نشد.',audience_menu())
                 return True
             return publish(groups,payload)
-        if text=='انتخاب گروه‌ها':
+        if text in ('انتخاب گروه‌ها','انتخاب گروه‌ها و کانال‌ها'):
             execute("UPDATE broadcast_drafts SET stage='groups',targets='[]' WHERE owner=?",(OWNER,))
             choices=target_choices()
             say('مقصدهای دلخواه را انتخاب کن؛ سپس «ارسال به انتخاب‌شده‌ها» را بزن. گزینهٔ «اعضای بات» شامل تلگرام و بله است.',group_menu([],choices))

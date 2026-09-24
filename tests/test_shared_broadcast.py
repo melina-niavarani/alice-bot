@@ -16,7 +16,7 @@ class SharedBroadcastTests(unittest.TestCase):
    self.msg(p,'/start',42)
    self.msg(p,'/start',43)
    self.msg(p,'/stop',43)
-   with self.store.db() as db:db.execute('INSERT INTO '+destination_table(p)+' VALUES (-100,?,1)',('Same name',))
+   with self.store.db() as db:db.execute('INSERT INTO '+destination_table(p)+'(chat,title,active) VALUES (-100,?,1)',('Same name',))
  def tearDown(self):self.tmp.cleanup()
  def msg(self,p,text,user=None,**extra):
   self.uid+=1;user=OWNERS[p] if user is None else user

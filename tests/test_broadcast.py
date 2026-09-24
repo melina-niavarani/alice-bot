@@ -81,12 +81,12 @@ class BroadcastTests(unittest.TestCase):
  def test_no_groups_keeps_all_options_visible(self):
   self.msg('/broadcast');self.msg('Hello')
   body=self.rows('SELECT body FROM outbox ORDER BY id DESC LIMIT 1')[0][0]
-  self.assertIn('هنوز گروهی ثبت نشده',body)
+  self.assertIn('هنوز گروه یا کانالی ثبت نشده',body)
   markup=json.loads(self.rows('SELECT markup FROM outbox ORDER BY id DESC LIMIT 1')[0][0])
   self.assertIn(['ارسال فقط به اعضای بات'],markup['keyboard'])
-  self.assertIn(['ارسال به همهٔ گروه‌ها'],markup['keyboard'])
+  self.assertIn(['ارسال به همهٔ گروه‌ها و کانال‌ها'],markup['keyboard'])
   self.assertIn(['ارسال به همهٔ اعضا و گروه‌ها'],markup['keyboard'])
-  self.assertIn(['انتخاب گروه‌ها'],markup['keyboard'])
+  self.assertIn(['انتخاب گروه‌ها و کانال‌ها'],markup['keyboard'])
  def test_all_targets_without_groups(self):
   self.msg('/start',user=5);self.msg('/broadcast');self.msg('Hello');self.msg('ارسال فقط به اعضای بات')
   self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5})
