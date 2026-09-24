@@ -18,25 +18,25 @@ class BroadcastTests(unittest.TestCase):
  def compose(self,photo=False):
   self.msg('عضویت در خبرها',user=5);self.msg('/connect',chat=-100,kind='supergroup');self.msg('/broadcast')
   self.msg('Hello' if not photo else '',**({'photo':[{'file_id':'test_photo'}],'caption':'Pool offer'} if photo else {}))
-  self.msg('اعضای بات');self.msg('گروه تلگرام · Pool · -100');self.msg('پیش‌نمایش ارسال')
-  return self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
+  self.msg('انتخاب گروه‌ها');self.msg('اعضای بات');self.msg('گروه تلگرام · Pool · -100')
  def test_non_owner_and_anonymous_cannot_register_or_broadcast(self):
   self.msg('/broadcast',user=5);self.msg('/connect',user=5,chat=-100,kind='group');self.msg('/connect',chat=-100,kind='group',sender_chat={'id':-100})
   self.assertFalse(self.rows('SELECT * FROM broadcast_drafts'));self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
   self.assertEqual(len(self.rows('SELECT * FROM destinations')),1)
- def test_confirm_exactly_once_and_private_vs_group(self):
-  nonce=self.compose();self.assertFalse(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
-  self.msg('تأیید ارسال '+nonce,user=5);self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
-  self.msg('تأیید ارسال '+nonce);self.msg('تأیید ارسال '+nonce)
+ def test_send_exactly_once_and_private_vs_group(self):
+  self.compose();self.assertFalse(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
+  self.msg('ارسال به انتخاب‌شده‌ها',user=5);self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
+  self.msg('ارسال به انتخاب‌شده‌ها');self.msg('ارسال به انتخاب‌شده‌ها')
   rows=self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL');self.assertEqual(len(rows),2);self.assertEqual({r['chat'] for r in rows},{5,-100})
  def test_stop_and_group_disconnect_before_delivery(self):
-  nonce=self.compose();self.msg('تأیید ارسال '+nonce);self.msg('/stop',user=5);self.msg('/disconnect',chat=-100,kind='group')
+  self.compose();self.msg('ارسال به انتخاب‌شده‌ها');self.msg('/stop',user=5);self.msg('/disconnect',chat=-100,kind='group')
   with self.s.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL')
   class API:
    def call(self,*a,**k):raise AssertionError('must not send')
   self.s.deliver_one('telegram',API());self.s.deliver_one('telegram',API());self.assertEqual({r[0] for r in self.rows('SELECT status FROM outbox')},{'skipped'})
- def test_photo_payload_and_preview(self):
-  nonce=self.compose(True);self.msg('تأیید ارسال '+nonce)
+ def test_photo_payload_without_duplicate_preview(self):
+  self.compose(True);self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
+  self.msg('ارسال به انتخاب‌شده‌ها')
   with self.s.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL')
   calls=[]
   class API:
@@ -47,9 +47,7 @@ class BroadcastTests(unittest.TestCase):
   self.msg('/broadcast')
   self.msg('',video={'file_id':'test_video','file_size':1024},caption='سانس جدید')
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
-  self.msg('همه اعضا و گروه‌ها')
-  nonce=self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
-  self.msg('تأیید ارسال '+nonce)
+  self.msg('ارسال به همهٔ اعضا و گروه‌ها')
   with self.s.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL')
   calls=[]
   class API:
@@ -62,10 +60,12 @@ class BroadcastTests(unittest.TestCase):
   self.msg('/broadcast')
   self.msg('',video={'file_id':'large','file_size':20*1024*1024+1})
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'content')
- def test_cancel_and_stale_confirm(self):
-  nonce=self.compose();self.msg('لغو ارسال');self.msg('تأیید ارسال '+nonce);self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
+ def test_cancel_and_stale_send_button(self):
+  self.compose();self.msg('لغو ارسال');self.msg('ارسال به انتخاب‌شده‌ها');self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
  def test_toggle_target_off(self):
-  self.msg('/broadcast');self.msg('Hello');self.msg('اعضای بات');self.msg('✅ اعضای بات');self.msg('پیش‌نمایش ارسال');self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
+  self.msg('/broadcast');self.msg('Hello');self.msg('انتخاب گروه‌ها');self.msg('اعضای بات');self.msg('✅ اعضای بات');self.msg('ارسال به انتخاب‌شده‌ها')
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'groups')
+  self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
  def test_direct_owner_message_then_choose_all(self):
   self.msg('خبر تازه',user=123)
   self.assertFalse(self.rows('SELECT * FROM broadcast_drafts'))
@@ -74,26 +74,33 @@ class BroadcastTests(unittest.TestCase):
   self.msg('خبر تازه')
   self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
   self.assertFalse(self.rows('SELECT * FROM broadcast_runs'))
-  self.msg('همه اعضا و گروه‌ها')
-  targets=json.loads(self.rows('SELECT targets FROM broadcast_drafts')[0][0])
-  self.assertEqual(set(targets),{'members','telegram:-555'})
-  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'confirm')
-  self.assertFalse(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
-  nonce=self.rows('SELECT nonce FROM broadcast_drafts')[0][0]
-  self.msg('تأیید ارسال '+nonce)
+  self.msg('ارسال به همهٔ اعضا و گروه‌ها')
+  self.assertFalse(self.rows('SELECT * FROM broadcast_drafts'))
+  self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
   self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5,-555})
  def test_no_groups_shows_members_only_hint(self):
   self.msg('/broadcast');self.msg('Hello')
   body=self.rows('SELECT body FROM outbox ORDER BY id DESC LIMIT 1')[0][0]
-  self.assertIn('فعلاً هیچ گروهی',body)
+  self.assertIn('هنوز گروهی ثبت نشده',body)
+  markup=json.loads(self.rows('SELECT markup FROM outbox ORDER BY id DESC LIMIT 1')[0][0])
+  self.assertIn(['ارسال فقط به اعضای بات'],markup['keyboard'])
+  self.assertNotIn(['انتخاب گروه‌ها'],markup['keyboard'])
  def test_all_targets_without_groups(self):
-  self.msg('/broadcast');self.msg('Hello');self.msg('همه اعضا و گروه‌ها')
-  self.assertEqual(json.loads(self.rows('SELECT targets FROM broadcast_drafts')[0][0]),['members'])
-  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'confirm')
-  self.assertEqual(len(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''")),1)
- def test_cancel_clears_preview_outbox(self):
-  self.compose();self.assertTrue(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
-  self.msg('لغو ارسال');self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
+  self.msg('/start',user=5);self.msg('/broadcast');self.msg('Hello');self.msg('ارسال فقط به اعضای بات')
+  self.assertEqual({r[0] for r in self.rows('SELECT chat FROM outbox WHERE campaign IS NOT NULL')},{5})
+  self.assertFalse(self.rows("SELECT * FROM outbox WHERE campaign IS NULL AND body=''"))
+ def test_back_to_audience_and_cancel(self):
+  self.compose();self.msg('بازگشت به مقصدها')
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'targets')
+  self.msg('لغو ارسال');self.assertFalse(self.rows('SELECT * FROM broadcast_drafts'))
+ def test_change_message_does_not_send_old_content(self):
+  self.msg('/start',user=5);self.msg('/broadcast');self.msg('Old');self.msg('تغییر پیام')
+  self.assertEqual(self.rows('SELECT stage FROM broadcast_drafts')[0][0],'content')
+  self.msg('New');self.msg('ارسال فقط به اعضای بات')
+  self.assertEqual([r[0] for r in self.rows('SELECT body FROM outbox WHERE campaign IS NOT NULL')],['New'])
+ def test_stale_action_button_does_not_create_customer_reply(self):
+  self.msg('ارسال به همهٔ اعضا و گروه‌ها')
+  self.assertFalse(self.rows('SELECT * FROM outbox'))
  def test_membership_event_discovers_and_removes_group(self):
   for state,active in [('administrator',1),('left',0)]:
    self.u+=1

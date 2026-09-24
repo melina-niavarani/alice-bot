@@ -27,13 +27,12 @@ class SharedBroadcastTests(unittest.TestCase):
   return self.rows('SELECT * FROM '+('bale_' if p=='bale' else '')+'broadcast_drafts')[0]
  def test_all_from_either_admin_routes_each_destination_once(self):
   for source in OWNERS:
-   self.msg(source,'News');self.msg(source,'همه اعضا و گروه‌ها')
-   d=self.draft(source)
-   self.assertEqual(d['stage'],'confirm')
+   self.msg(source,'News')
+   self.assertEqual(self.draft(source)['stage'],'targets')
    before=len(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL'))
-   self.msg(source,'تأیید ارسال '+d['nonce'],99)
+   self.msg(source,'ارسال به همهٔ اعضا و گروه‌ها',99)
    self.assertEqual(len(self.rows('SELECT * FROM outbox WHERE campaign IS NOT NULL')),before)
-   self.msg(source,'تأیید ارسال '+d['nonce']);self.msg(source,'تأیید ارسال '+d['nonce'])
+   self.msg(source,'ارسال به همهٔ اعضا و گروه‌ها');self.msg(source,'ارسال به همهٔ اعضا و گروه‌ها')
    rows=self.rows('SELECT platform,chat FROM outbox WHERE campaign=(SELECT MAX(id) FROM campaigns)')
    self.assertEqual(len(rows),4)
    self.assertEqual({tuple(r) for r in rows},{('telegram',42),('bale',42),('telegram',-100),('bale',-100)})
@@ -42,12 +41,11 @@ class SharedBroadcastTests(unittest.TestCase):
    report=self.rows('SELECT body FROM outbox ORDER BY id DESC LIMIT 1')[0][0]
    self.assertIn('تلگرام',report);self.assertIn('بله',report)
  def test_members_means_both_without_groups(self):
-  self.msg('bale','News');self.msg('bale','اعضای بات');self.msg('bale','پیش‌نمایش ارسال')
-  self.msg('bale','تأیید ارسال '+self.draft('bale')['nonce'])
+  self.msg('bale','News');self.msg('bale','ارسال فقط به اعضای بات')
   self.assertEqual({tuple(r) for r in self.rows('SELECT platform,chat FROM outbox WHERE campaign IS NOT NULL')},{('telegram',42),('bale',42)})
  def test_selected_group_id_does_not_cross_platform(self):
-  self.msg('telegram','News');self.msg('telegram','گروه بله · Same name · -100');self.msg('telegram','پیش‌نمایش ارسال')
-  self.msg('telegram','تأیید ارسال '+self.draft('telegram')['nonce'])
+  self.msg('telegram','News');self.msg('telegram','انتخاب گروه‌ها');self.msg('telegram','گروه بله · Same name · -100')
+  self.msg('telegram','ارسال به انتخاب‌شده‌ها')
   self.assertEqual([tuple(r) for r in self.rows('SELECT platform,chat FROM outbox WHERE campaign IS NOT NULL')],[('bale',-100)])
  def test_legacy_confirmation_cannot_expand_audience(self):
   with self.store.db() as db:
@@ -58,7 +56,7 @@ class SharedBroadcastTests(unittest.TestCase):
   for source in OWNERS:
    target='bale' if source=='telegram' else 'telegram'
    self.msg(source,'',photo=[{'file_id':'source-file'}],caption='Offer')
-   self.msg(source,'همه اعضا و گروه‌ها');self.msg(source,'تأیید ارسال '+self.draft(source)['nonce'])
+   self.msg(source,'ارسال به همهٔ اعضا و گروه‌ها')
    with self.store.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL OR platform!=?',(target,))
    calls=[]
    class Fake:
@@ -81,7 +79,7 @@ class SharedBroadcastTests(unittest.TestCase):
   for source in OWNERS:
    target='bale' if source=='telegram' else 'telegram'
    self.msg(source,'',video={'file_id':'source-video','file_size':1234},caption='آلیس')
-   self.msg(source,'همه اعضا و گروه‌ها');self.msg(source,'تأیید ارسال '+self.draft(source)['nonce'])
+   self.msg(source,'ارسال به همهٔ اعضا و گروه‌ها')
    with self.store.db() as db:db.execute('DELETE FROM outbox WHERE campaign IS NULL OR platform!=?',(target,))
    calls=[]
    class Fake:
