@@ -9,3 +9,67 @@
 .brand{background:linear-gradient(120deg,#102541,#1b416b);border-bottom:1px solid #547da14d}.brand-icon{background:#d6e7f51a;color:#c9e1f7;border:1px solid #c9e1f733}.gym{background:linear-gradient(120deg,#173353,#24547f);border-color:#355f87;box-shadow:0 7px 20px #15385615}.pool{background:linear-gradient(120deg,#e1edf9,#f0f7fd)}.service-card{border-radius:19px}.white-card{box-shadow:0 4px 18px #1b3e6705}
 
 .admin-panel label{display:block;margin:18px 0 7px;font-size:.9rem}.admin-panel input,.admin-panel textarea{font:inherit;background:white;width:100%;border:1px solid #cbd8e9;border-radius:10px;padding:10px}.admin-panel textarea{resize:vertical}.admin-panel .eyebrow{margin-top:12px}
+
+/* Alice brand refresh: the header and primary actions use the exact brand blue. */
+:root{
+  --brand:#1a507f;
+  --brand-deep:#123a5d;
+  --background:#f4f7fa;
+  --foreground:#162d42;
+  --card-foreground:#162d42;
+  --popover-foreground:#162d42;
+  --primary:var(--brand);
+  --secondary:#e8f1f8;
+  --secondary-foreground:#194b75;
+  --muted:#eef3f7;
+  --muted-foreground:#536b80;
+  --accent:#dcecf7;
+  --accent-foreground:#17466e;
+  --border:#d7e2eb;
+  --input:#c8d8e4;
+  --ring:var(--brand);
+}
+body{background:#e8eff5;color:var(--foreground)}
+.app-shell{max-width:560px;background:var(--background)}
+.brand{
+  min-height:102px;
+  gap:14px;
+  padding:18px 24px;
+  background:var(--brand);
+  border-bottom:1px solid #ffffff24;
+}
+.wordmark{display:flex;flex-direction:column;min-width:0;direction:rtl;font-family:"Vazirmatn",Tahoma,Arial,sans-serif;letter-spacing:normal}
+.wordmark strong{font-size:1.35rem;line-height:1.5;font-weight:800}
+.wordmark span{margin-top:2px;font:600 .77rem/1.5 Arial,sans-serif;letter-spacing:.13em;direction:ltr;text-align:right;opacity:.9}
+.brand-logo{width:105px;height:77px;flex:0 0 105px;display:grid;place-items:center}
+.brand-logo img{display:block;width:100%;height:100%;object-fit:contain}
+.eyebrow{color:#44647e;font-size:.84rem}
+.intro p:last-child,.page-title p,.location p,.notice p{color:#536b80}
+.section-heading>span,footer{color:#60758a}
+.service-card{min-height:118px;box-shadow:0 2px 12px #123a5d09;transition:transform .18s ease,box-shadow .18s ease,border-color .18s ease}
+.service-card:hover{box-shadow:0 10px 24px #123a5d16}
+.gym{background:var(--brand);border-color:#39749f;color:#fff;box-shadow:0 7px 20px #123a5d12}
+.gym p{color:#e1edf6}
+.pool{background:#e7f1f9;border-color:#cce0ee;color:#16496f}
+.pool p{color:#3d6480}
+.location{border-color:var(--border);color:var(--foreground)}
+.location .service-icon{background:#eaf2f8;color:var(--brand)}
+.icon-button{width:44px;height:44px;border-radius:12px;color:var(--brand)}
+.icon-button:hover{background:#e8f1f8}
+.empty-note{border-color:#b8cfdf;background:#ffffff8c;color:#536b80}
+.notice{border-top-color:var(--border)}
+.notice p{font-size:.94rem}
+.back,.text-link{color:var(--brand);min-height:44px}
+.title-icon,.title-icon.blue{background:#e8f1f8;color:var(--brand)}
+.white-card{border-color:var(--border);box-shadow:0 3px 16px #123a5d08}
+.price-line strong{color:var(--brand);font-weight:650}
+.primary,.secondary{min-height:48px;font-weight:650}
+.primary{background:var(--brand);border-color:var(--brand);color:#fff}
+.primary:hover{background:var(--brand-deep)}
+.secondary{border-color:var(--border)}
+.secondary:hover{background:#f6fafd;border-color:#9ebbd0}
+.admin-panel input,.admin-panel textarea{min-height:46px;border-color:var(--input);border-radius:12px}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #7ab2df;outline-offset:3px}
+@media(min-width:640px){.app-shell{border:1px solid #d4e1eb;box-shadow:0 18px 54px #123a5d17}}
+@media(max-width:360px){.brand{padding:16px 18px}.wordmark strong{font-size:1.15rem}.brand-logo{width:82px;height:61px;flex-basis:82px}}
+@media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}*,*::before,*::after{animation-duration:.01ms!important;transition-duration:.01ms!important}}

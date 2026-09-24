@@ -1,24 +1,25 @@
 'use client';
 import {messenger,miniApp} from '@/lib/messenger';
 import AdminPanel from './admin-panel';
-import {useEffect,useState} from 'react';
-import {Dumbbell,Waves,MapPin,ChevronLeft,ArrowRight,Clock3,FileText,Bell,Navigation,Phone,RefreshCw,Leaf} from 'lucide-react';
+import Image from 'next/image';
+import {useCallback,useEffect,useState} from 'react';
+import {Dumbbell,Waves,MapPin,ChevronLeft,ArrowRight,Clock3,FileText,Bell,Navigation,Phone,RefreshCw} from 'lucide-react';
 import {Table,TableBody,TableCell,TableHead,TableHeader,TableRow} from '@/components/ui/table';
 import {initialContent,contentSchema,type Content} from '@/lib/content';
 type View='admin'|'home'|'gym'|'pool'|'location'|'gym-rules'|'pool-rules';
 export default function Home(){
  const [content,setContent]=useState<Content>(initialContent),[view,setView]=useState<View>('home'),[error,setError]=useState(false),[loading,setLoading]=useState(true);
  async function refresh(){setLoading(true);try{const r=await fetch('/api/content',{cache:'no-store'});if(!r.ok)throw Error();const j=await r.json() as {content:unknown};setContent(contentSchema.parse(j.content));setError(false)}catch{setError(true)}finally{setLoading(false)}}
- useEffect(()=>{void refresh();const onFocus=()=>{void refresh()};window.addEventListener('focus',onFocus);return()=>window.removeEventListener('focus',onFocus)},[]);
- useEffect(()=>{const script=document.createElement('script');script.src=messenger()==='bale'?'https://tapi.bale.ai/miniapp.js?3':'https://telegram.org/js/telegram-web-app.js';script.onload=()=>{const app=miniApp();app?.ready();app?.expand();app?.setHeaderColor?.('#102541');app?.setBackgroundColor?.('#f3f6fb')};document.head.appendChild(script);return()=>{script.remove()}},[]);
+ const go=useCallback((v:View)=>{if(messenger()==='bale'){setView(v);window.scrollTo(0,0)}else location.hash=v},[]);
+ useEffect(()=>{const timer=window.setTimeout(()=>void refresh(),0);const onFocus=()=>{void refresh()};window.addEventListener('focus',onFocus);return()=>{window.clearTimeout(timer);window.removeEventListener('focus',onFocus)}},[]);
+ useEffect(()=>{const script=document.createElement('script');script.src=messenger()==='bale'?'https://tapi.bale.ai/miniapp.js?3':'https://telegram.org/js/telegram-web-app.js';script.onload=()=>{const app=miniApp();app?.ready();app?.expand();app?.setHeaderColor?.('#1a507f');app?.setBackgroundColor?.('#f4f7fa')};document.head.appendChild(script);return()=>{script.remove()}},[]);
  useEffect(()=>{const read=()=>{const v=location.hash.slice(1);setView(['admin','gym','pool','location','gym-rules','pool-rules'].includes(v)?v as View:'home');window.scrollTo(0,0)};read();window.addEventListener('hashchange',read);return()=>window.removeEventListener('hashchange',read)},[]);
- useEffect(()=>{const app=miniApp();const back=()=>{go((view.endsWith('-rules')?view.replace('-rules',''):'home') as View)};if(view==='home')app?.BackButton?.hide();else app?.BackButton?.show();app?.BackButton?.onClick(back);return()=>app?.BackButton?.offClick(back)},[view]);
- const go=(v:View)=>{if(messenger()==='bale'){setView(v);window.scrollTo(0,0)}else location.hash=v};
+ useEffect(()=>{const app=miniApp();const back=()=>{go((view.endsWith('-rules')?view.replace('-rules',''):'home') as View)};if(view==='home')app?.BackButton?.hide();else app?.BackButton?.show();app?.BackButton?.onClick(back);return()=>app?.BackButton?.offClick(back)},[view,go]);
  const service=view.startsWith('gym')?content.gym:content.pool;
  const serviceTitle=view.startsWith('gym')?'بدنسازی':'استخر و سونا';
  const map='https://www.google.com/maps/search/?api=1&query='+encodeURIComponent(content.name+' '+content.address);
  return <main className="app-shell">
-  <header className="brand"><div className="wordmark" aria-label="آلیس">ALICE<span>SPORT CLUB</span></div><div className="brand-icon"><Leaf size={27}/></div></header>
+  <header className="brand"><div className="wordmark"><strong>مجموعه ورزشی آلیس</strong><span>ALICE SPORT CLUB</span></div><div className="brand-logo"><Image src="/alice-white-center.png" alt="نشان مجموعه ورزشی آلیس" width={105} height={77} priority /></div></header>
   {view!=='home'&&<button className="back" onClick={()=>go(view.endsWith('-rules')?(view.startsWith('gym')?'gym':'pool'):'home')}><ArrowRight size={19}/>بازگشت</button>}
   {view==='admin'?<AdminPanel onPublished={()=>void refresh()}/>:view==='home'?<>
    <section className="intro"><p className="eyebrow">تهرانپارس · ورزش و تندرستی</p><h1>{content.name}</h1><p>{content.greeting} <span aria-hidden>🌿</span></p></section>
