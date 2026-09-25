@@ -22,6 +22,14 @@ export const tariffs: Record<'gym' | 'pool', TariffSection[]> = {
         { label: '۲۰ جلسه', price: 8_500_000 },
       ],
     },
+    {
+      title: 'یوگا',
+      items: [
+        { label: '۴ جلسه', price: 2_200_000 },
+        { label: '۸ جلسه', price: 3_200_000 },
+        { label: '۱۲ جلسه', price: 3_900_000 },
+      ],
+    },
     { title: 'برنامه بدنسازی', items: [{ label: 'برنامه', price: 1_200_000 }] },
   ],
   pool: [
