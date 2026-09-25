@@ -9,7 +9,7 @@ const botSource = join(repo, 'cloudflare-bot', 'src');
 const botTarget = join(server, 'alice-bot');
 
 await mkdir(botTarget, { recursive: true });
-for (const name of ['index.js', 'config.js']) {
+for (const name of ['index.js', 'config.js', 'flow.js']) {
   await copyFile(join(botSource, name), join(botTarget, name));
 }
 
@@ -24,6 +24,9 @@ export default {
     }
     return miniapp.fetch(request, env, context);
   },
+  scheduled(event, env, context) {
+    return bot.scheduled(event, { ...env, DB: env.BOT_DB }, context);
+  },
 };
 `);
 
@@ -34,6 +37,6 @@ config.name = 'alice-bot';
 config.main = 'entry.js';
 config.d1_databases.push({ ...botConfig.d1_databases[0], binding: 'BOT_DB' });
 config.vars = { ...config.vars, ...botConfig.vars, MINIAPP_URL: 'https://alice-bot.lvl3lin4.workers.dev' };
-// Scheduling is configured separately; building the combined Worker must not enable it.
-config.triggers = {};
+// Pending broadcasts continue even when nobody sends another message.
+config.triggers = { crons: ['* * * * *'] };
 await writeFile(configPath, JSON.stringify(config, null, 2) + '\n');
