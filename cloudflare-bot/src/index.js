@@ -23,6 +23,14 @@ async function api(env, platform, method, payload = {}) {
   return result.result;
 }
 
+async function setTelegramMenu(env, chat) {
+  const url = miniappUrl(env, 'telegram');
+  if (!url) return;
+  const payload = { menu_button: { type: 'web_app', text: 'ورود به آلیس', web_app: { url } } };
+  if (chat != null) payload.chat_id = Number(chat);
+  await api(env, 'telegram', 'setChatMenuButton', payload);
+}
+
 async function queue(env, platform, chat, text, rows = menu(env, platform, chat), campaign = null) {
   const payload = { text, reply_markup: keyboard(rows) };
   await env.DB.prepare('INSERT INTO outbox(platform,chat,method,payload,campaign) VALUES (?,?,?,?,?)')
@@ -201,7 +209,10 @@ async function handleUpdate(env, platform, update) {
       if (own(env, platform, message.from.id) && await broadcast(env, platform, message)) {
         // The owner composer handles this update.
       } else if (command === '/start' || ['/menu', '/cancel', 'بازگشت'].includes(text)) {
-        if (command === '/start') await env.DB.prepare('UPDATE members SET subscribed=1 WHERE platform=? AND chat=? AND news_opt_out=0').bind(platform, chat.id).run();
+        if (command === '/start') {
+          await env.DB.prepare('UPDATE members SET subscribed=1 WHERE platform=? AND chat=? AND news_opt_out=0').bind(platform, chat.id).run();
+          if (platform === 'telegram') await setTelegramMenu(env, chat.id).catch(() => {});
+        }
         await queue(env, platform, chat.id, `${copy.welcome}\nخبرها و پیشنهادها همین‌جا می‌آیند. توقف دریافت: /stop`);
       } else if (command === '/stop' || ['لغو خبرها', 'توقف خبرها'].includes(text)) {
         await env.DB.prepare('UPDATE members SET subscribed=0,news_opt_out=1 WHERE platform=? AND chat=?').bind(platform, chat.id).run();
@@ -292,11 +303,16 @@ async function install(env, request) {
       payload.allowed_updates = ['message', 'channel_post', 'my_chat_member'];
     }
     await api(env, platform, 'setWebhook', payload);
-    if (platform === 'telegram' && miniappUrl(env, platform)) {
-      await api(env, platform, 'setChatMenuButton', { menu_button: { type: 'web_app', text: 'ورود به آلیس', web_app: { url: miniappUrl(env, platform) } } });
-    }
+    if (platform === 'telegram') await setTelegramMenu(env);
     done[platform] = 'registered';
   }
+  const members = await env.DB.prepare("SELECT chat FROM members WHERE platform='telegram'").all();
+  const chats = new Set([String(env.TELEGRAM_OWNER_ID), ...(members.results || []).map(row => String(row.chat))]);
+  let menusUpdated = 0;
+  for (const chat of chats) {
+    try { await setTelegramMenu(env, chat); menusUpdated++; } catch { /* The user may have blocked the bot. */ }
+  }
+  done.telegramMenusUpdated = menusUpdated;
   return json(done);
 }
 
