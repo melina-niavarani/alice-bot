@@ -63,6 +63,11 @@ body{background:#e8eff5;color:var(--foreground)}
 .title-icon,.title-icon.blue{background:#e8f1f8;color:var(--brand)}
 .white-card{border-color:var(--border);box-shadow:0 3px 16px #123a5d08}
 .price-line strong{color:var(--brand);font-weight:650}
+.tariff-group{padding-top:16px;margin-top:16px;border-top:1px solid var(--border)}
+.tariff-group h3{font-size:.98rem;color:var(--foreground);margin-bottom:7px}
+.tariff-group .price-line:first-of-type{border-top:0}
+.tariffs .price-line{align-items:center;line-height:1.6}
+.tariffs .price-line strong{font-size:.88rem;white-space:nowrap;text-align:left}
 .primary,.secondary{min-height:48px;font-weight:650}
 .primary{background:var(--brand);border-color:var(--brand);color:#fff}
 .primary:hover{background:var(--brand-deep)}
