@@ -304,6 +304,16 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/health' && request.method === 'GET') return json({ ok: true, service: 'alice-bot' });
+    if (url.pathname === '/ops/menu' && request.method === 'GET') {
+      if (!env.SETUP_SECRET || request.headers.get('authorization') !== `Bearer ${env.SETUP_SECRET}`) return json({ error: 'Unauthorized' }, 401);
+      try {
+        const [defaultMenu, ownerMenu] = await Promise.all([
+          api(env, 'telegram', 'getChatMenuButton'),
+          api(env, 'telegram', 'getChatMenuButton', { chat_id: Number(env.TELEGRAM_OWNER_ID) }),
+        ]);
+        return json({ defaultMenu, ownerMenu });
+      } catch { return json({ error: 'Menu lookup failed' }, 502); }
+    }
     if (url.pathname === '/ops/install' && request.method === 'POST') {
       try { return await install(env, request); } catch { return json({ error: 'Registration failed' }, 502); }
     }

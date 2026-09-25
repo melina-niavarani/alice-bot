@@ -19,7 +19,7 @@ import bot from './alice-bot/index.js';
 export default {
   async fetch(request, env, context) {
     const path = new URL(request.url).pathname;
-    if (path === '/health' || path === '/ops/install' || path.startsWith('/webhook/')) {
+    if (path === '/health' || path === '/ops/install' || path === '/ops/menu' || path.startsWith('/webhook/')) {
       return bot.fetch(request, { ...env, DB: env.BOT_DB }, context);
     }
     return miniapp.fetch(request, env, context);
