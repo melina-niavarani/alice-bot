@@ -3,7 +3,6 @@
   "name": "alice-bot",
   "main": "src/index.js",
   "compatibility_date": "2026-09-24",
-  "triggers": { "crons": ["* * * * *"] },
   "d1_databases": [
     {
       "binding": "DB",
@@ -13,7 +12,7 @@
     }
   ],
   "vars": {
-    "MINIAPP_URL": "https://alice-miniapp.lvl3lin4.workers.dev",
+    "MINIAPP_URL": "https://alice-bot.lvl3lin4.workers.dev",
     "TELEGRAM_OWNER_ID": "92655562",
     "BALE_OWNER_ID": "1984558572"
   }
