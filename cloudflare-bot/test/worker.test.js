@@ -33,3 +33,10 @@ test('webhook installation refuses missing credentials before changing either bo
   assert.equal(response.status, 500);
   assert.match((await response.json()).error, /Bot tokens/);
 });
+
+test('queue diagnostics are private even when no database is bound', async () => {
+  for (const headers of [{}, {authorization:'Bearer wrong'}]) {
+    const response=await worker.fetch(new Request('https://example.com/ops/status',{headers}),{...env,SETUP_SECRET:'private'},ctx);
+    assert.equal(response.status,401);
+  }
+});

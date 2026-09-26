@@ -169,6 +169,19 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     if (url.pathname === '/health' && request.method === 'GET') return json({ ok: true, service: 'alice-bot', version: 'broadcast-v2' });
+    if (url.pathname === '/ops/status' && request.method === 'GET') {
+      if (!env.SETUP_SECRET || request.headers.get('authorization') !== `Bearer ${env.SETUP_SECRET}`) return json({ error: 'Unauthorized' }, 401);
+      const db=env.DB.withSession ? env.DB.withSession('first-primary') : env.DB;
+      const [queue, recent, drafts, received, lease]=await Promise.all([
+        db.prepare('SELECT platform,status,COUNT(*) count FROM outbox GROUP BY platform,status').all(),
+        db.prepare(`SELECT o.id,o.platform,o.method,o.status,o.attempts,o.campaign,o.created,e.reason
+          FROM outbox o LEFT JOIN delivery_errors e ON e.outbox_id=o.id ORDER BY o.id DESC LIMIT 12`).all(),
+        db.prepare('SELECT platform,stage,expires FROM drafts').all(),
+        db.prepare("SELECT substr(event_key,1,instr(event_key,':')-1) platform,COUNT(*) count,MAX(created) latest FROM bot_events GROUP BY platform").all(),
+        db.prepare('SELECT expires FROM delivery_lock WHERE id=1').first(),
+      ]);
+      return json({version:'broadcast-v2',queue:queue.results,recent:recent.results,drafts:drafts.results,received:received.results,lease});
+    }
     if (url.pathname === '/ops/menu' && request.method === 'GET') {
       if (!env.SETUP_SECRET || request.headers.get('authorization') !== `Bearer ${env.SETUP_SECRET}`) return json({ error: 'Unauthorized' }, 401);
       try {
