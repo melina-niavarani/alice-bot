@@ -22,25 +22,13 @@ export function contentOf(message) {
   return { error: 'متن، یک عکس یا یک ویدئو بفرست. عکس و ویدئو می‌توانند کپشن داشته باشند.' };
 }
 
+const audienceText = 'پیام آماده است. مقصد را انتخاب کن:\n\n«همهٔ گروه‌ها و ربات‌ها»: اعضای هر دو ربات و تمام گروه‌ها و کانال‌های متصل.\n«فقط ربات‌ها»: فقط اعضای ربات تلگرام و ربات بله.\n\nبا انتخاب گزینهٔ ارسال، انتشار شروع می‌شود.';
 function audienceMarkup(key) {
   return { inline_keyboard: [
-    [button('ارسال به اعضای هر دو بات', key, 'members')],
-    [button('ارسال به همهٔ گروه‌ها و کانال‌ها', key, 'groups_all')],
-    [button('ارسال به همه‌جا', key, 'all')],
-    [button('انتخاب گروه‌ها و کانال‌ها', key, 'choose')],
+    [button('ارسال به همهٔ گروه‌ها و ربات‌ها', key, 'all')],
+    [button('ارسال فقط به اعضای ربات‌ها', key, 'members')],
     [button('تغییر پیام', key, 'change'), button('لغو ارسال', key, 'cancel')],
   ] };
-}
-function groupMarkup(data, selected) {
-  const pages = Math.max(1, Math.ceil(data.places.length / 8));
-  const page = Math.min(pages - 1, data.page || 0);
-  const rows = data.places.slice(page * 8, (page + 1) * 8).map((p, i) => [button(
-    `${selected.includes(`${p.platform}:${p.chat}`) ? '✅ ' : ''}${label(p.platform)} · ${p.kind === 'channel' ? 'کانال' : 'گروه'} ${p.title.slice(0, 32)}`,
-    data.key, `g${page * 8 + i}`)]);
-  if (pages > 1) rows.push([button('صفحهٔ قبل', data.key, `p${Math.max(0,page-1)}`), button('صفحهٔ بعد', data.key, `p${Math.min(pages-1,page+1)}`)]);
-  rows.push([button(`ارسال به ${fa(selected.length)} مقصد انتخاب‌شده`, data.key, 'send')]);
-  rows.push([button('بازگشت به مقصدها', data.key, 'back'), button('لغو ارسال', data.key, 'cancel')]);
-  return { inline_keyboard: rows };
 }
 
 export async function campaignSummary(db, campaign) {
@@ -80,42 +68,24 @@ async function planUpdate(env, platform, update, write) {
     const draft = await db.prepare('SELECT * FROM drafts WHERE platform=? AND owner=?').bind(platform,cb.from.id).first();
     const data = parse(draft?.payload);
     if (!draft || data?.key!==match[1] || draft.expires < now()) return 'این پیام قبلاً ارسال یا لغو شده، یا زمان آن گذشته است. برای پیام تازه «ارسال همگانی» را بزن.';
-    const action = match[2], selected = parse(draft.targets) || [];
+    const action = match[2];
     if (action==='cancel') { clearDraft(cb.from.id); edit(chat.id,cb.message.message_id,'ارسال لغو شد؛ پیامی منتشر نشد.'); return 'لغو شد'; }
     if (action==='change') { saveDraft(cb.from.id,'content'); edit(chat.id,cb.message.message_id,'متن، عکس یا ویدئوی تازه را بفرست.'); return 'منتظر پیام تازه هستم'; }
-    if (action==='back') { saveDraft(cb.from.id,'targets',data); edit(chat.id,cb.message.message_id,'مقصد را انتخاب کن؛ دکمه‌های «ارسال» پیام را منتشر می‌کنند. همهٔ گزینه‌ها شامل تلگرام و بله‌اند.',audienceMarkup(data.key)); return ''; }
-    if (draft.stage==='targets' && action==='choose') {
-      data.places = await places(); data.page=0;
-      if (!data.places.length) return 'هنوز گروه یا کانالی متصل نشده است.';
-      saveDraft(cb.from.id,'groups',data);
-      edit(chat.id,cb.message.message_id,'گروه‌ها و کانال‌های دلخواه را علامت بزن؛ سپس «ارسال به مقصدهای انتخاب‌شده» را بزن.',groupMarkup(data,[])); return '';
+    if (!['all', 'members'].includes(action)) {
+      // An older selector must never publish using options that were removed.
+      saveDraft(cb.from.id,'targets',data);
+      edit(chat.id,cb.message.message_id,audienceText,audienceMarkup(data.key));
+      return 'گزینه‌های ارسال ساده‌تر شده‌اند؛ یکی از دو گزینه را انتخاب کن.';
     }
-    if (draft.stage==='groups' && /^g\d+$/.test(action)) {
-      const p = data.places?.[Number(action.slice(1))];
-      if (!p) return 'این مقصد در فهرست نیست.';
-      const key = `${p.platform}:${p.chat}`;
-      const next = selected.includes(key)?selected.filter(x=>x!==key):[...selected,key];
-      saveDraft(cb.from.id,'groups',data,next);
-      edit(chat.id,cb.message.message_id,`${fa(next.length)} مقصد انتخاب شده. با زدن دکمهٔ ارسال، پیام منتشر می‌شود.`,groupMarkup(data,next)); return '';
-    }
-    if (draft.stage==='groups' && /^p\d+$/.test(action)) {
-      const page=Number(action.slice(1));
-      if (page===data.page) return '';
-      data.page=Math.min(Math.max(0,Math.ceil(data.places.length/8)-1),page);
-      saveDraft(cb.from.id,'groups',data,selected);
-      edit(chat.id,cb.message.message_id,`${fa(selected.length)} مقصد انتخاب شده.`,groupMarkup(data,selected)); return '';
-    }
-    const validSend = draft.stage==='targets' && ['members','groups_all','all'].includes(action) || draft.stage==='groups' && action==='send';
-    if (!validSend || !data.content?.method) return 'از دکمه‌های همین مرحله استفاده کن.';
+    if (!['targets','groups'].includes(draft.stage) || !data.content?.method) return 'برای پیام تازه «ارسال همگانی» را بزن.';
     const currentPlaces=await places();
     const recipients=new Map();
     if (['members','all'].includes(action)) {
       for (const m of (await db.prepare('SELECT platform,chat FROM members WHERE subscribed=1').all()).results || []) recipients.set(`${m.platform}:${m.chat}`,{...m,destination:0});
     }
-    if (['groups_all','all','send'].includes(action)) {
-      for (const p of currentPlaces) if (action!=='send'||selected.includes(`${p.platform}:${p.chat}`)) recipients.set(`${p.platform}:${p.chat}`,{...p,destination:1});
+    if (action==='all') {
+      for (const p of currentPlaces) recipients.set(`${p.platform}:${p.chat}`,{...p,destination:1});
     }
-    if (action==='send' && currentPlaces.filter(p=>selected.includes(`${p.platform}:${p.chat}`)).length!==selected.length) return 'یکی از مقصدها دیگر فعال نیست؛ به فهرست مقصدها برگرد و دوباره انتخاب کن.';
     if (!recipients.size) return 'مخاطبی انتخاب نشده یا مقصد فعالی وجود ندارد؛ چیزی ارسال نشد.';
     const campaign=(await db.prepare('SELECT COALESCE(MAX(id),0)+1 id FROM campaigns').first()).id;
     write('INSERT INTO campaigns(id,source_platform,owner) VALUES (?,?,?)',campaign,platform,cb.from.id);
@@ -175,7 +145,7 @@ async function planUpdate(env, platform, update, write) {
     else if(!text.startsWith('/') && !menuLabels.has(text)) {
       if(commandLabels.has(text)||text.startsWith('✅ ')||/^(گروه|کانال) (بله|تلگرام) ·/.test(text)) {
         const data=parse(draft?.payload);
-        if(data?.key && data.content && draft.expires>=now()) queue(chat.id,'مقصد را از دکمه‌های زیر انتخاب کن. زدن «ارسال» پیام را منتشر می‌کند.',audienceMarkup(data.key));
+        if(data?.key && data.content && draft.expires>=now()) queue(chat.id,audienceText,audienceMarkup(data.key));
         else queue(chat.id,'این دکمه مربوط به ارسال قبلی است. برای پیام تازه «ارسال همگانی» را بزن.',keyboard(adminMenu));
         return '';
       }
@@ -183,7 +153,7 @@ async function planUpdate(env, platform, update, write) {
       if(content.error) {queue(chat.id,content.error,keyboard(adminMenu));return '';}
       const data={key:crypto.randomUUID().replaceAll('-','').slice(0,12),content};
       saveDraft(owner,'targets',data);
-      queue(chat.id,'پیام آماده است. کجا منتشر شود؟\n«همه‌جا» یعنی اعضای هر دو بات و تمام گروه‌ها و کانال‌های متصل.\nبا زدن دکمهٔ ارسال، انتشار شروع می‌شود.',audienceMarkup(data.key));return '';
+      queue(chat.id,audienceText,audienceMarkup(data.key));return '';
     }
   }
   if(command==='/start'||['/menu','/cancel','بازگشت'].includes(text)) {

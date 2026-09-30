@@ -4,6 +4,7 @@ export const platforms = {
 };
 
 export const menuLabels = new Set(['بدنسازی', 'استخر و سونا', 'نشانی مجموعه', 'بازگشت', 'مدیریت ارسال', 'ارسال همگانی', 'گزارش ارسال', 'مقصدهای ارسال']);
+// Recognize buttons left in older chats; these rows are never displayed.
 export const audienceButtons = [
   ['ارسال به همهٔ اعضا و گروه‌ها'],
   ['ارسال فقط به اعضای بات'],
