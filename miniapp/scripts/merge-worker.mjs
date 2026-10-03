@@ -9,7 +9,7 @@ const botSource = join(repo, 'cloudflare-bot', 'src');
 const botTarget = join(server, 'alice-bot');
 
 await mkdir(botTarget, { recursive: true });
-for (const name of ['index.js', 'config.js', 'flow.js']) {
+for (const name of ['index.js', 'config.js', 'flow.js', 'reports.js']) {
   await copyFile(join(botSource, name), join(botTarget, name));
 }
 
@@ -35,6 +35,7 @@ const config = JSON.parse(await readFile(configPath, 'utf8'));
 const botConfig = JSON.parse(await readFile(join(repo, 'cloudflare-bot', 'wrangler.jsonc'), 'utf8'));
 config.name = 'alice-bot';
 config.main = 'entry.js';
+config.d1_databases = config.d1_databases.filter(db => db.binding !== 'BOT_DB');
 config.d1_databases.push({ ...botConfig.d1_databases[0], binding: 'BOT_DB' });
 config.vars = { ...config.vars, ...botConfig.vars, MINIAPP_URL: 'https://alice-bot.lvl3lin4.workers.dev' };
 // Pending broadcasts continue even when nobody sends another message.

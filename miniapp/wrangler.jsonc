@@ -10,6 +10,12 @@
       "database_name": "alice-miniapp-db",
       "database_id": "82174993-a40e-4133-a573-77af89cbbb47",
       "migrations_dir": "drizzle"
+    },
+    {
+      "binding": "BOT_DB",
+      "database_name": "alice-bot-db",
+      "database_id": "2daebf8c-59aa-48ca-926f-b30bff57ca1b",
+      "migrations_dir": "../cloudflare-bot/migrations"
     }
   ]
 }

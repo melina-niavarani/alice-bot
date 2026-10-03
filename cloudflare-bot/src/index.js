@@ -1,5 +1,6 @@
 import { miniappUrl, platforms } from './config.js';
-import { adminMenu, campaignSummary, handleUpdate } from './flow.js';
+import { adminMenu, handleUpdate } from './flow.js';
+import { readCampaignReport, formatCampaignReport } from './reports.js';
 
 const now = () => Math.floor(Date.now() / 1000);
 const json = (body, status = 200) => Response.json(body, { status, headers: { 'Cache-Control': 'no-store' } });
@@ -100,11 +101,7 @@ async function finishCampaigns(env) {
   const finished = (await env.DB.prepare(`SELECT c.id,c.source_platform,c.owner FROM campaigns c JOIN campaign_meta m ON m.campaign=c.id
     WHERE m.notified=0 AND NOT EXISTS (SELECT 1 FROM outbox o WHERE o.campaign=c.id AND o.status IN ('pending','sending'))`).all()).results || [];
   for (const c of finished) {
-    let text = 'ارسال پایان یافت.\n'+await campaignSummary(env.DB,c.id);
-    const errors=(await env.DB.prepare(`SELECT DISTINCT o.platform,o.destination,d.title,e.reason FROM outbox o
-      LEFT JOIN destinations d ON d.platform=o.platform AND d.chat=o.chat
-      LEFT JOIN delivery_errors e ON e.outbox_id=o.id WHERE o.campaign=? AND o.status IN ('failed','unknown') LIMIT 5`).bind(c.id).all()).results||[];
-    if(errors.length) text+='\n\n'+errors.map(e=>`${e.platform==='bale'?'بله':'تلگرام'}${e.destination?' · '+(e.title||'گروه/کانال'):''}: ${e.reason||'نتیجهٔ تحویل مشخص نیست؛ مقصد را بررسی کن.'}`).join('\n');
+    const text = formatCampaignReport(await readCampaignReport(env.DB,c.id));
     await env.DB.batch([
       env.DB.prepare(`INSERT INTO outbox(platform,chat,method,payload) SELECT ?,?,'sendMessage',? FROM campaign_meta WHERE campaign=? AND notified=0`)
         .bind(c.source_platform,c.owner,JSON.stringify({text,reply_markup:{keyboard:adminMenu,resize_keyboard:true}}),c.id),

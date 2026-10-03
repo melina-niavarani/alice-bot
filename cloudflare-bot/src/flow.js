@@ -1,4 +1,5 @@
 import { copy, menu, menuLabels, platforms, audienceButtons } from './config.js';
+import { readCampaignReport, formatCampaignReport } from './reports.js';
 
 export const adminMenu = [['ارسال همگانی', 'گزارش ارسال'], ['مقصدهای ارسال', 'بازگشت']];
 const now = () => Math.floor(Date.now() / 1000);
@@ -29,15 +30,6 @@ function audienceMarkup(key) {
     [button('ارسال فقط به اعضای ربات‌ها', key, 'members')],
     [button('تغییر پیام', key, 'change'), button('لغو ارسال', key, 'cancel')],
   ] };
-}
-
-export async function campaignSummary(db, campaign) {
-  const rows = (await db.prepare('SELECT platform,status,COUNT(*) n FROM outbox WHERE campaign=? GROUP BY platform,status').bind(campaign).all()).results || [];
-  const names = { sent:'موفق', pending:'در انتظار', sending:'در حال ارسال', failed:'ناموفق', unknown:'نتیجه نامشخص' };
-  return Object.keys(platforms).map(p => {
-    const counts = rows.filter(r=>r.platform===p);
-    return counts.length ? `${label(p)}: ${counts.map(r=>`${fa(r.n)} ${names[r.status] || 'نامشخص'}`).join('، ')}` : '';
-  }).filter(Boolean).join('\n');
 }
 
 // Bale can restart its update sequence. Message identity includes chat/date;
@@ -127,10 +119,9 @@ async function planUpdate(env, platform, update, write) {
   if(own(env,platform,message.from.id)) {
     const owner=message.from.id;
     if(['/report','گزارش ارسال'].includes(text)) {
-      const runs=(await db.prepare('SELECT id FROM campaigns ORDER BY id DESC LIMIT 3').all()).results||[];
-      const summaries=[];
-      for(const run of runs) summaries.push(`ارسال ${fa(run.id)}\n${await campaignSummary(db,run.id)}`);
-      queue(chat.id,summaries.join('\n\n')||'هنوز پیامی منتشر نشده است.',keyboard(adminMenu)); return '';
+      const run=await db.prepare('SELECT id FROM campaigns ORDER BY id DESC LIMIT 1').first();
+      const report=run?await readCampaignReport(db,run.id):null;
+      queue(chat.id,formatCampaignReport(report)+(report?'\n\nاین گزارش آخرین ارسال است. سابقهٔ ارسال‌ها: مینی‌اپ ← ورود مدیر ← گزارش ارسال.':''),keyboard(adminMenu)); return '';
     }
     if(['/admin','مدیریت ارسال','مقصدهای ارسال'].includes(text)) {
       const list=await places();
