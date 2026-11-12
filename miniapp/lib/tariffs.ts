@@ -1,36 +1,29 @@
 export type Tariff = { label: string; price: number };
 export type TariffSection = { title: string; items: Tariff[] };
 
-// Only prices clearly established from Alice's tariff sheet and owner corrections.
+// Prices are displayed in toman. The autumn 1405 gym sheet lists amounts in rial.
 export const tariffs: Record<'gym' | 'pool', TariffSection[]> = {
   gym: [
     {
-      title: 'بدنسازی عمومی',
+      title: 'بدنسازی خصوصی (تک‌نفره)',
       items: [
-        { label: '۸ جلسه', price: 1_800_000 },
-        { label: '۱۲ جلسه', price: 2_000_000 },
-        { label: '۱۶ جلسه', price: 2_200_000 },
-        { label: '۲۰ جلسه', price: 2_500_000 },
+        { label: '۱۲ جلسه', price: 16_850_000 },
       ],
     },
     {
-      title: 'بدنسازی خصوصی',
+      title: 'بدنسازی خصوصی (تا سه نفر)',
       items: [
-        { label: '۸ جلسه', price: 4_800_000 },
+        { label: '۱۰ جلسه', price: 5_500_000 },
         { label: '۱۲ جلسه', price: 6_000_000 },
         { label: '۱۶ جلسه', price: 7_200_000 },
-        { label: '۲۰ جلسه', price: 8_500_000 },
       ],
     },
     {
-      title: 'یوگا',
+      title: 'ورودی ترکیبی بدنسازی و استخر',
       items: [
-        { label: '۴ جلسه', price: 2_200_000 },
-        { label: '۸ جلسه', price: 3_200_000 },
-        { label: '۱۲ جلسه', price: 3_900_000 },
+        { label: '۱ جلسه', price: 1_100_000 },
       ],
     },
-    { title: 'برنامه بدنسازی', items: [{ label: 'برنامه', price: 1_200_000 }] },
   ],
   pool: [
     {
