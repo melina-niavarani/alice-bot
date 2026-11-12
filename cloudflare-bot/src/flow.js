@@ -149,7 +149,7 @@ async function planUpdate(env, platform, update, write) {
   }
   if(command==='/start'||['/menu','/cancel','بازگشت'].includes(text)) {
     if(command==='/start') write('UPDATE members SET subscribed=1 WHERE platform=? AND chat=? AND news_opt_out=0',platform,chat.id);
-    queue(chat.id,`${copy.welcome}\nخبرها و پیشنهادها همین‌جا می‌آیند. توقف دریافت: /stop`);
+    queue(chat.id,`${copy.welcome}\nاز تازه‌ترین برنامه‌ها، اطلاعیه‌ها و پیشنهادهای ویژهٔ آلیس باخبر باشید 💙\nتوقف دریافت: /stop`);
   } else if(command==='/stop'||['لغو خبرها','توقف خبرها'].includes(text)) {
     write('UPDATE members SET subscribed=0,news_opt_out=1 WHERE platform=? AND chat=?',platform,chat.id);queue(chat.id,'دریافت خبرهای خصوصی متوقف شد.');
   } else if(command==='/subscribe') {
